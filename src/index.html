@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Kemono Browser</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div class="brand">
+          <div class="brand__mark">KB</div>
+          <div class="brand__text">
+            <span>Kemono Browser</span>
+            <small>Custom artist + post explorer</small>
+          </div>
+        </div>
+        <div class="topbar__status" id="statusMessage">Connecting...</div>
+        <div class="topbar__actions">
+          <button class="ghost" id="clearGallery">Clear gallery</button>
+        </div>
+      </header>
+
+      <main class="workspace">
+        <section class="panel panel--left">
+          <section class="panel__view" id="artistsView">
+            <div class="panel__header">
+              <h2>Artist search</h2>
+              <p>Browse by name or ID. Results are ranked by favorites.</p>
+            </div>
+
+            <div class="search-row">
+              <input
+                type="search"
+                id="artistSearch"
+                placeholder="Search artists..."
+                autocomplete="off"
+              />
+              <select id="serviceFilter">
+                <option value="all">All services</option>
+              </select>
+            </div>
+
+            <div class="pagination" id="artistsPagination">
+              <button class="ghost" id="artistsPrev">Prev</button>
+              <span id="artistsPageInfo">Page 1</span>
+              <button class="ghost" id="artistsNext">Next</button>
+            </div>
+
+            <div class="list" id="artistsList"></div>
+          </section>
+        </section>
+
+        <section class="panel panel--middle">
+          <section class="panel__view" id="postsView">
+            <div class="panel__header">
+              <div class="panel__header-row">
+                <div class="artist-meta">
+                  <h2 id="artistTitle">Pick an artist</h2>
+                  <span id="artistSubtitle">Results will load here.</span>
+                </div>
+              </div>
+              <p>Search inside posts and open them in the gallery.</p>
+            </div>
+
+            <div class="search-row">
+              <input
+                type="search"
+                id="postSearch"
+                placeholder="Search posts..."
+                autocomplete="off"
+              />
+              <button class="ghost" id="refreshPosts">Refresh</button>
+            </div>
+
+            <div class="pagination" id="postsPagination">
+              <button class="ghost" id="postsPrev">Prev</button>
+              <span id="postsPageInfo">Page 1</span>
+              <button class="ghost" id="postsNext">Next</button>
+            </div>
+
+            <div class="list" id="postsList"></div>
+          </section>
+        </section>
+
+        <section class="panel panel--right">
+          <div class="panel__header panel__header--tight">
+            <div>
+              <h2>Gallery</h2>
+              <p>Click a post to open it. Use + to queue multiple posts.</p>
+            </div>
+            <div class="legend">
+              <span class="dot dot--image"></span>Image
+              <span class="dot dot--video"></span>Video
+              <span class="dot dot--file"></span>File
+            </div>
+          </div>
+
+          <div class="gallery" id="gallery">
+            <div class="empty-state">
+              <h3>No posts selected</h3>
+              <p>Pick an artist, then click a post to start building a gallery.</p>
+            </div>
+          </div>
+
+          <div class="timeline" id="timeline">
+            <div class="timeline__empty">Timeline is empty.</div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="renderer.js" defer></script>
+  </body>
+</html>

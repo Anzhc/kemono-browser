@@ -1,0 +1,14 @@
+{
+  "name": "kemono-browser",
+  "version": "0.1.0",
+  "description": "Custom Kemono browser",
+  "main": "main.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron ."
+  },
+  "devDependencies": {
+    "electron": "^31.0.0"
+  }
+}

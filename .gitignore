@@ -1,0 +1,37 @@
+# Node/Electron
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+dist/
+build/
+out/
+.cache/
+.parcel-cache/
+.turbo/
+.vite/
+
+# Electron Forge / Builder
+release/
+*.dmg
+*.exe
+*.msi
+*.AppImage
+
+# Runtime data
+*.log
+logs/
+tmp/
+temp/
+
+# Environment files
+.env
+.env.*.local
+
+# OS / Editor
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
