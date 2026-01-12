@@ -1,11 +1,56 @@
 const { app, BrowserWindow, ipcMain, shell, Menu, dialog } = require("electron");
 const path = require("path");
 const fs = require("fs");
+const JSZip = require("jszip");
 
 const API_BASE = "https://kemono.cr/api/v1";
 
 let creatorsCache = null;
 let outputFolder = "";
+
+const IMAGE_EXTENSIONS = new Set([
+  "jpg",
+  "jpeg",
+  "png",
+  "webp",
+  "gif",
+  "bmp",
+  "svg",
+]);
+
+function getUniquePath(folder, baseName) {
+  const ext = path.extname(baseName);
+  const nameOnly = ext ? baseName.slice(0, -ext.length) : baseName;
+  let candidate = path.join(folder, baseName);
+  let index = 1;
+  while (fs.existsSync(candidate)) {
+    const nextName = `${nameOnly} (${index})${ext}`;
+    candidate = path.join(folder, nextName);
+    index += 1;
+  }
+  return candidate;
+}
+
+function guessMime(filename) {
+  const ext = path.extname(filename).toLowerCase().slice(1);
+  switch (ext) {
+    case "jpg":
+    case "jpeg":
+      return "image/jpeg";
+    case "png":
+      return "image/png";
+    case "webp":
+      return "image/webp";
+    case "gif":
+      return "image/gif";
+    case "bmp":
+      return "image/bmp";
+    case "svg":
+      return "image/svg+xml";
+    default:
+      return "application/octet-stream";
+  }
+}
 
 function buildQuery(params = {}) {
   const search = new URLSearchParams();
@@ -141,16 +186,7 @@ app.whenReady().then(() => {
     }
     const parsed = new URL(url);
     const baseName = path.basename(parsed.pathname) || "image";
-    const finalPath = (name) => path.join(targetFolder, name);
-    const ext = path.extname(baseName);
-    const nameOnly = ext ? baseName.slice(0, -ext.length) : baseName;
-    let candidate = finalPath(baseName);
-    let index = 1;
-    while (fs.existsSync(candidate)) {
-      const nextName = `${nameOnly} (${index})${ext}`;
-      candidate = finalPath(nextName);
-      index += 1;
-    }
+    const candidate = getUniquePath(targetFolder, baseName);
 
     const response = await fetch(url);
     if (!response.ok) {
@@ -160,6 +196,46 @@ app.whenReady().then(() => {
     const buffer = Buffer.from(await response.arrayBuffer());
     fs.writeFileSync(candidate, buffer);
     return candidate;
+  });
+
+  ipcMain.handle("app:saveBytes", async (_event, { bytes, filename, folder }) => {
+    const targetFolder = folder || outputFolder;
+    if (!targetFolder) {
+      throw new Error("Output folder is not set.");
+    }
+    const safeName = filename && filename.trim() ? filename : "image";
+    const candidate = getUniquePath(targetFolder, safeName);
+    const buffer = Buffer.isBuffer(bytes) ? bytes : Buffer.from(bytes);
+    fs.writeFileSync(candidate, buffer);
+    return candidate;
+  });
+
+  ipcMain.handle("app:extractZipImages", async (_event, { url }) => {
+    const response = await fetch(url);
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(`Zip fetch failed ${response.status}: ${text}`);
+    }
+    const buffer = Buffer.from(await response.arrayBuffer());
+    const zip = await JSZip.loadAsync(buffer);
+    const results = [];
+    const entries = Object.values(zip.files);
+    for (const entry of entries) {
+      if (entry.dir) {
+        continue;
+      }
+      const ext = path.extname(entry.name).toLowerCase().slice(1);
+      if (!IMAGE_EXTENSIONS.has(ext)) {
+        continue;
+      }
+      const bytes = await entry.async("nodebuffer");
+      results.push({
+        name: path.basename(entry.name),
+        bytes,
+        mime: guessMime(entry.name),
+      });
+    }
+    return results;
   });
 
   createWindow();

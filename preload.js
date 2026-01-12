@@ -16,4 +16,7 @@ contextBridge.exposeInMainWorld("kemono", {
   getOutputFolder: () => ipcRenderer.invoke("app:getOutputFolder"),
   downloadImage: (url, folder) =>
     ipcRenderer.invoke("app:downloadImage", { url, folder }),
+  saveBytes: (bytes, filename, folder) =>
+    ipcRenderer.invoke("app:saveBytes", { bytes, filename, folder }),
+  extractZipImages: (url) => ipcRenderer.invoke("app:extractZipImages", { url }),
 });

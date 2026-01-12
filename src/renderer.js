@@ -34,6 +34,7 @@ const state = {
 
 const gifPreviewCache = new Map();
 const downloadedImages = new Set();
+const memoryMedia = new Map();
 
 const elements = {
   statusMessage: document.getElementById("statusMessage"),
@@ -583,14 +584,43 @@ function buildMediaCollection(post) {
   return { media, files };
 }
 
-function registerGalleryImage(img, src) {
+function registerGalleryImage(img, src, options = {}) {
   img.dataset.src = src;
   img.dataset.loadState = "loading";
+  if (options.memKey) {
+    img.dataset.memKey = options.memKey;
+  }
+  if (options.filename) {
+    img.dataset.filename = options.filename;
+  }
   img.addEventListener("load", () => {
     img.dataset.loadState = "loaded";
   });
   img.addEventListener("error", () => {
     img.dataset.loadState = "error";
+  });
+}
+
+function clearMemoryMedia() {
+  memoryMedia.forEach((_entry, url) => {
+    URL.revokeObjectURL(url);
+    downloadedImages.delete(url);
+  });
+  memoryMedia.clear();
+}
+
+function releaseEntryMemory(entry) {
+  if (!entry || !Array.isArray(entry.media)) {
+    return;
+  }
+  entry.media.forEach((item) => {
+    const key = item.memoryKey;
+    if (!key || !memoryMedia.has(key)) {
+      return;
+    }
+    URL.revokeObjectURL(key);
+    memoryMedia.delete(key);
+    downloadedImages.delete(key);
   });
 }
 
@@ -666,13 +696,14 @@ function renderGallerySideTimeline(items) {
       img.decoding = "async";
       img.fetchPriority = "low";
       const fullUrl = item.fullUrl || buildMediaUrl(item.path);
-      img.src = buildThumbUrl(item.path);
+      const thumbUrl = item.thumbUrl || buildThumbUrl(item.path);
+      img.src = thumbUrl;
       if (downloadedImages.has(fullUrl)) {
         img.classList.add("is-downloaded");
       }
       img.onerror = () => {
         img.onerror = null;
-        img.src = buildMediaUrl(item.path);
+        img.src = buildMediaUrl(item.path) || thumbUrl;
       };
       button.appendChild(img);
     } else {
@@ -689,6 +720,48 @@ function renderGallerySideTimeline(items) {
     });
     elements.gallerySideTimeline.appendChild(button);
   });
+}
+
+async function previewZipInGallery(url, label) {
+  setStatus("Loading zip...", "info");
+  try {
+    const images = await window.kemono.extractZipImages(url);
+    if (!images || images.length === 0) {
+      setStatus("No images found in zip.", "info");
+      return;
+    }
+    const media = images.map((item) => {
+      const blob = new Blob([item.bytes], { type: item.mime });
+      const objectUrl = URL.createObjectURL(blob);
+      memoryMedia.set(objectUrl, { blob, name: item.name });
+      return {
+        name: item.name,
+        url: objectUrl,
+        type: "image",
+        path: "",
+        isGif: item.mime === "image/gif",
+        thumbUrl: objectUrl,
+        memoryKey: objectUrl,
+      };
+    });
+    const key = `zip:${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const entry = {
+      key,
+      id: key,
+      service: "zip",
+      user: "zip",
+      title: label,
+      published: null,
+      media,
+      files: [],
+    };
+    state.galleryPosts = [...state.galleryPosts, entry];
+    renderGallery();
+    renderTimeline();
+    setStatus(`Added ${media.length} images from zip.`, "info");
+  } catch (error) {
+    setStatus(`Zip preview failed: ${error.message}`, "error");
+  }
 }
 
 function setupSplitter(splitter, onMove) {
@@ -817,6 +890,7 @@ async function addPostToGallery(postSummary, { append }) {
   if (append) {
     state.galleryPosts = [...state.galleryPosts, entry];
   } else {
+    clearMemoryMedia();
     state.galleryPosts = [entry];
   }
 
@@ -862,7 +936,10 @@ function renderGallery() {
         mediaItem.className = "gallery-media-item";
         mediaItem.id = mediaId;
         const img = document.createElement("img");
-        registerGalleryImage(img, item.url);
+        registerGalleryImage(img, item.url, {
+          memKey: item.memoryKey || "",
+          filename: item.name || "",
+        });
         img.src = item.url;
         img.alt = item.name || entry.title;
         img.decoding = "async";
@@ -877,6 +954,7 @@ function renderGallery() {
           path: item.path,
           alt: item.name || entry.title,
           fullUrl,
+          thumbUrl: item.thumbUrl || "",
         });
       } else if (item.type === "video") {
         const mediaItem = document.createElement("div");
@@ -896,14 +974,31 @@ function renderGallery() {
         file.className = "gallery-file";
         const label = document.createElement("span");
         label.textContent = item.name || "File";
+        const actions = document.createElement("div");
+        actions.className = "gallery-file__actions";
         const link = document.createElement("button");
         link.className = "ghost";
         link.textContent = "Open";
         link.addEventListener("click", () => {
           window.kemono.openExternal(item.url);
         });
+        actions.appendChild(link);
+
+        const isZip =
+          (item.name && item.name.toLowerCase().endsWith(".zip")) ||
+          (item.url && item.url.toLowerCase().includes(".zip"));
+        if (isZip) {
+          const preview = document.createElement("button");
+          preview.className = "ghost";
+          preview.textContent = "Preview";
+          preview.addEventListener("click", async () => {
+            await previewZipInGallery(item.url, item.name || "Archive");
+          });
+          actions.appendChild(preview);
+        }
+
         file.appendChild(label);
-        file.appendChild(link);
+        file.appendChild(actions);
         mediaWrap.appendChild(file);
       });
     }
@@ -973,7 +1068,8 @@ function scrollToGalleryPost(key) {
 
 function handleTimelineAction(action, index) {
   if (action === "remove") {
-    state.galleryPosts.splice(index, 1);
+    const [removed] = state.galleryPosts.splice(index, 1);
+    releaseEntryMemory(removed);
   } else if (action === "left" && index > 0) {
     const [item] = state.galleryPosts.splice(index, 1);
     state.galleryPosts.splice(index - 1, 0, item);
@@ -1111,6 +1207,7 @@ function setupEventListeners() {
   });
 
   elements.clearGallery.addEventListener("click", () => {
+    clearMemoryMedia();
     state.galleryPosts = [];
     renderGallery();
     renderTimeline();
@@ -1127,9 +1224,19 @@ function setupEventListeners() {
       return;
     }
     try {
-      const saved = await window.kemono.downloadImage(img.dataset.src, folder);
+      const memKey = img.dataset.memKey;
+      const filename = img.dataset.filename || "image";
+      let saved = "";
+      if (memKey && memoryMedia.has(memKey)) {
+        const entry = memoryMedia.get(memKey);
+        const buffer = await entry.blob.arrayBuffer();
+        saved = await window.kemono.saveBytes(buffer, entry.name || filename, folder);
+      } else {
+        saved = await window.kemono.downloadImage(img.dataset.src, folder);
+      }
+      const downloadKey = memKey || img.dataset.src;
       img.classList.add("is-downloaded");
-      downloadedImages.add(img.dataset.src);
+      downloadedImages.add(downloadKey);
       if (elements.gallerySideTimeline) {
         elements.gallerySideTimeline
           .querySelectorAll("img")
