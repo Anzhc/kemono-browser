@@ -158,7 +158,7 @@ button.ghost:hover {
 .workspace {
   flex: 1;
   display: grid;
-  grid-template-columns: minmax(280px, 360px) minmax(320px, 440px) minmax(0, 1fr);
+  grid-template-columns: minmax(280px, 360px) minmax(260px, var(--posts-width, 420px)) 8px minmax(280px, 1fr);
   gap: var(--gap);
   padding: 16px 20px 20px;
   min-height: 0;
@@ -285,7 +285,7 @@ button.ghost:hover {
 }
 
 #postsList {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   grid-auto-rows: max-content;
   align-content: start;
 }
@@ -561,8 +561,12 @@ button.ghost:hover {
     grid-template-columns: 1fr;
   }
 
+  .splitter {
+    display: none;
+  }
+
   #postsList {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   }
 
   .panel--right {
@@ -587,4 +591,16 @@ button.ghost:hover {
     gap: 8px;
   }
 
+}
+.splitter {
+  width: 8px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, rgba(31, 111, 107, 0.1), rgba(31, 111, 107, 0.35));
+  cursor: col-resize;
+  align-self: stretch;
+  justify-self: center;
+}
+
+.splitter.is-dragging {
+  background: linear-gradient(180deg, rgba(31, 111, 107, 0.25), rgba(31, 111, 107, 0.55));
 }

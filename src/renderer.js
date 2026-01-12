@@ -45,6 +45,7 @@ const elements = {
   postsNext: document.getElementById("postsNext"),
   postsPageInfo: document.getElementById("postsPageInfo"),
   postsList: document.getElementById("postsList"),
+  splitter: document.getElementById("splitter"),
   gallery: document.getElementById("gallery"),
   timeline: document.getElementById("timeline"),
   clearGallery: document.getElementById("clearGallery"),
@@ -438,6 +439,55 @@ function buildMediaCollection(post) {
   return { media, files };
 }
 
+function setupSplitter() {
+  if (!elements.splitter) {
+    return;
+  }
+  const workspace = elements.splitter.closest(".workspace");
+  if (!workspace) {
+    return;
+  }
+
+  let dragging = false;
+
+  const onMove = (event) => {
+    if (!dragging) {
+      return;
+    }
+    const rect = workspace.getBoundingClientRect();
+    const leftWidth = workspace.children[0]?.getBoundingClientRect().width || 0;
+    const splitterWidth = elements.splitter.getBoundingClientRect().width;
+    const minPosts = 260;
+    const minGallery = 280;
+    const maxPosts = rect.width - leftWidth - splitterWidth - minGallery;
+    const raw = event.clientX - rect.left - leftWidth - splitterWidth / 2;
+    const next = Math.max(minPosts, Math.min(maxPosts, raw));
+    workspace.style.setProperty("--posts-width", `${next}px`);
+  };
+
+  const stopDrag = () => {
+    if (!dragging) {
+      return;
+    }
+    dragging = false;
+    elements.splitter.classList.remove("is-dragging");
+    document.body.style.cursor = "";
+    document.body.style.userSelect = "";
+    window.removeEventListener("mousemove", onMove);
+    window.removeEventListener("mouseup", stopDrag);
+  };
+
+  elements.splitter.addEventListener("mousedown", (event) => {
+    dragging = true;
+    elements.splitter.classList.add("is-dragging");
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", stopDrag);
+    event.preventDefault();
+  });
+}
+
 async function addPostToGallery(postSummary, { append }) {
   if (!postSummary) {
     return;
@@ -626,6 +676,7 @@ function handleTimelineAction(action, index) {
 }
 
 function setupEventListeners() {
+  setupSplitter();
   elements.artistSearch.addEventListener(
     "input",
     debounce((event) => {
@@ -708,6 +759,17 @@ function setupEventListeners() {
     } else {
       addPostToGallery(post, { append: false });
     }
+  });
+
+  elements.postsList.addEventListener("contextmenu", (event) => {
+    const card = event.target.closest(".post-card");
+    if (!card) {
+      return;
+    }
+    event.preventDefault();
+    const key = `${card.dataset.service}:${card.dataset.user}:${card.dataset.postId}`;
+    const post = state.postsByKey.get(key);
+    addPostToGallery(post, { append: true });
   });
 
   elements.timeline.addEventListener("click", (event) => {
