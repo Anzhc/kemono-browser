@@ -273,6 +273,58 @@ button.ghost:hover {
   background: #152021;
 }
 
+.artist-card {
+  position: relative;
+  overflow: hidden;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 10px;
+}
+
+.artist-card__bg,
+.artist-card__shade {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.artist-card__bg {
+  background-size: cover;
+  background-position: center;
+  filter: saturate(0.85) brightness(0.65);
+}
+
+.artist-card__shade {
+  background: linear-gradient(90deg, rgba(9, 14, 14, 0.9) 0%, rgba(9, 14, 14, 0.5) 65%, rgba(9, 14, 14, 0.2) 100%);
+}
+
+.artist-card__body {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  gap: 4px;
+}
+
+.artist-card__avatar {
+  position: relative;
+  z-index: 1;
+  width: 46px;
+  height: 46px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: #0d1414;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.artist-card__avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
 .card__title {
   font-family: "Space Grotesk", sans-serif;
   font-weight: 600;

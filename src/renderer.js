@@ -253,6 +253,16 @@ function renderArtists() {
     card.dataset.id = artist.id;
     card.dataset.name = artist.name || "Unknown";
 
+    const banner = document.createElement("div");
+    banner.className = "artist-card__bg";
+    banner.style.backgroundImage = `url(https://img.kemono.cr/banners/${artist.service}/${artist.id})`;
+
+    const shade = document.createElement("div");
+    shade.className = "artist-card__shade";
+
+    const body = document.createElement("div");
+    body.className = "artist-card__body";
+
     const title = document.createElement("div");
     title.className = "card__title";
     title.textContent = artist.name || "Unknown";
@@ -269,9 +279,26 @@ function renderArtists() {
       artist.updated ? artist.updated * 1000 : null
     )}`;
 
-    card.appendChild(title);
-    card.appendChild(meta);
-    card.appendChild(updated);
+    body.appendChild(title);
+    body.appendChild(meta);
+    body.appendChild(updated);
+
+    const avatarWrap = document.createElement("div");
+    avatarWrap.className = "artist-card__avatar";
+    const avatar = document.createElement("img");
+    avatar.src = `https://img.kemono.cr/icons/${artist.service}/${artist.id}`;
+    avatar.alt = `${artist.name || "Artist"} avatar`;
+    avatar.decoding = "async";
+    avatar.fetchPriority = "low";
+    avatar.onerror = () => {
+      avatarWrap.remove();
+    };
+    avatarWrap.appendChild(avatar);
+
+    card.appendChild(banner);
+    card.appendChild(shade);
+    card.appendChild(body);
+    card.appendChild(avatarWrap);
     elements.artistsList.appendChild(card);
   });
 }
