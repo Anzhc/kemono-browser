@@ -45,6 +45,27 @@ body::before {
   z-index: 0;
 }
 
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(42, 209, 201, 0.35) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background-color: rgba(42, 209, 201, 0.35);
+  border-radius: 6px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
 .app-shell {
   position: relative;
   z-index: 1;
@@ -116,7 +137,7 @@ button.ghost:hover {
   display: grid;
   grid-template-columns: minmax(240px, var(--artists-width, 30%)) 8px minmax(320px, var(--gallery-width, 40%)) 8px minmax(240px, 30%);
   gap: var(--gap);
-  padding: 10px 12px 12px;
+  padding: 4px;
   min-height: 0;
 }
 
@@ -194,6 +215,12 @@ button.ghost:hover {
 
 .panel__header-row--space {
   justify-content: space-between;
+}
+
+.panel__header-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .artist-meta span {
@@ -435,6 +462,10 @@ button.ghost:hover {
   border-bottom: 1px solid rgba(42, 209, 201, 0.14);
 }
 
+.panel__header--tight .panel__header-row {
+  width: 100%;
+}
+
 .gallery {
   flex: 1;
   overflow-y: auto;
@@ -559,7 +590,7 @@ button.ghost:hover {
   }
 
   .workspace {
-    padding: 8px;
+    padding: 4px;
   }
 
   .panel__header--tight {

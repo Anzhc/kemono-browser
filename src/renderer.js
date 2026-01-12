@@ -52,6 +52,7 @@ const elements = {
   splitterGalleryPosts: document.getElementById("splitterGalleryPosts"),
   gallery: document.getElementById("gallery"),
   timeline: document.getElementById("timeline"),
+  refreshGalleryImages: document.getElementById("refreshGalleryImages"),
   clearGallery: document.getElementById("clearGallery"),
 };
 
@@ -575,6 +576,36 @@ function buildMediaCollection(post) {
   return { media, files };
 }
 
+function registerGalleryImage(img, src) {
+  img.dataset.src = src;
+  img.dataset.loadState = "loading";
+  img.addEventListener("load", () => {
+    img.dataset.loadState = "loaded";
+  });
+  img.addEventListener("error", () => {
+    img.dataset.loadState = "error";
+  });
+}
+
+function refreshFailedGalleryImages() {
+  const images = elements.gallery.querySelectorAll("img[data-src]");
+  images.forEach((img) => {
+    const state = img.dataset.loadState;
+    if (state === "loaded") {
+      return;
+    }
+    const src = img.dataset.src;
+    if (!src) {
+      return;
+    }
+    img.dataset.loadState = "loading";
+    img.src = "";
+    requestAnimationFrame(() => {
+      img.src = src;
+    });
+  });
+}
+
 function setupSplitter(splitter, onMove) {
   if (!splitter) {
     return;
@@ -738,6 +769,7 @@ function renderGallery() {
     entry.media.forEach((item) => {
       if (item.type === "image") {
         const img = document.createElement("img");
+        registerGalleryImage(img, item.url);
         img.src = item.url;
         img.alt = item.name || entry.title;
         img.decoding = "async";
@@ -954,6 +986,10 @@ function setupEventListeners() {
       return;
     }
     scrollToGalleryPost(item.dataset.key);
+  });
+
+  elements.refreshGalleryImages.addEventListener("click", () => {
+    refreshFailedGalleryImages();
   });
 
   elements.clearGallery.addEventListener("click", () => {

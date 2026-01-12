@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, shell } = require("electron");
+const { app, BrowserWindow, ipcMain, shell, Menu } = require("electron");
 const path = require("path");
 
 const API_BASE = "https://kemono.cr/api/v1";
@@ -60,10 +60,12 @@ function createWindow() {
     },
   });
 
+  win.setMenuBarVisibility(false);
   win.loadFile(path.join(__dirname, "src", "index.html"));
 }
 
 app.whenReady().then(() => {
+  Menu.setApplicationMenu(null);
   ipcMain.handle("api:getCreators", async () => {
     return getCreators();
   });
