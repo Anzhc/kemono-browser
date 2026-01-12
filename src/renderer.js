@@ -28,6 +28,7 @@ const state = {
   postsByKey: new Map(),
   postCache: new Map(),
   galleryPosts: [],
+  galleryTimelineVisible: false,
 };
 
 const gifPreviewCache = new Map();
@@ -50,10 +51,13 @@ const elements = {
   postsList: document.getElementById("postsList"),
   splitterArtistsGallery: document.getElementById("splitterArtistsGallery"),
   splitterGalleryPosts: document.getElementById("splitterGalleryPosts"),
+  galleryShell: document.getElementById("galleryShell"),
   gallery: document.getElementById("gallery"),
+  gallerySideTimeline: document.getElementById("gallerySideTimeline"),
   timeline: document.getElementById("timeline"),
   refreshGalleryImages: document.getElementById("refreshGalleryImages"),
   clearGallery: document.getElementById("clearGallery"),
+  toggleGalleryTimeline: document.getElementById("toggleGalleryTimeline"),
 };
 
 function setStatus(message, tone = "info") {
@@ -606,6 +610,66 @@ function refreshFailedGalleryImages() {
   });
 }
 
+function updateGalleryTimelineVisibility() {
+  if (
+    !elements.galleryShell ||
+    !elements.gallerySideTimeline ||
+    !elements.toggleGalleryTimeline
+  ) {
+    return;
+  }
+  if (state.galleryTimelineVisible) {
+    elements.galleryShell.classList.add("has-side");
+    elements.gallerySideTimeline.hidden = false;
+    elements.toggleGalleryTimeline.textContent = "Hide timeline";
+  } else {
+    elements.galleryShell.classList.remove("has-side");
+    elements.gallerySideTimeline.hidden = true;
+    elements.gallerySideTimeline.innerHTML = "";
+    elements.toggleGalleryTimeline.textContent = "Timeline";
+  }
+}
+
+function renderGallerySideTimeline(items) {
+  if (!elements.gallerySideTimeline || !state.galleryTimelineVisible) {
+    return;
+  }
+  elements.gallerySideTimeline.innerHTML = "";
+  if (items.length === 0) {
+    return;
+  }
+  items.forEach((item) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "gallery-side__item";
+    button.dataset.targetId = item.id;
+    if (item.type === "image") {
+      const img = document.createElement("img");
+      img.alt = item.alt || "Preview";
+      img.decoding = "async";
+      img.fetchPriority = "low";
+      img.src = buildThumbUrl(item.path);
+      img.onerror = () => {
+        img.onerror = null;
+        img.src = buildMediaUrl(item.path);
+      };
+      button.appendChild(img);
+    } else {
+      const label = document.createElement("div");
+      label.className = "gallery-side__label";
+      label.textContent = item.type === "video" ? "VID" : "FILE";
+      button.appendChild(label);
+    }
+    button.addEventListener("click", () => {
+      const target = document.getElementById(item.id);
+      if (target) {
+        target.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+    });
+    elements.gallerySideTimeline.appendChild(button);
+  });
+}
+
 function setupSplitter(splitter, onMove) {
   if (!splitter) {
     return;
@@ -743,6 +807,9 @@ async function addPostToGallery(postSummary, { append }) {
 
 function renderGallery() {
   elements.gallery.innerHTML = "";
+  if (elements.gallerySideTimeline) {
+    elements.gallerySideTimeline.innerHTML = "";
+  }
   if (state.galleryPosts.length === 0) {
     const empty = document.createElement("div");
     empty.className = "empty-state";
@@ -750,6 +817,8 @@ function renderGallery() {
     elements.gallery.appendChild(empty);
     return;
   }
+
+  const timelineItems = [];
 
   state.galleryPosts.forEach((entry) => {
     const section = document.createElement("section");
@@ -768,18 +837,32 @@ function renderGallery() {
 
     entry.media.forEach((item) => {
       if (item.type === "image") {
+        const mediaId = `gallery-media-${entry.key}-${timelineItems.length}`;
+        const mediaItem = document.createElement("div");
+        mediaItem.className = "gallery-media-item";
+        mediaItem.id = mediaId;
         const img = document.createElement("img");
         registerGalleryImage(img, item.url);
         img.src = item.url;
         img.alt = item.name || entry.title;
         img.decoding = "async";
-        mediaWrap.appendChild(img);
+        mediaItem.appendChild(img);
+        mediaWrap.appendChild(mediaItem);
+        timelineItems.push({
+          id: mediaId,
+          type: "image",
+          path: item.path,
+          alt: item.name || entry.title,
+        });
       } else if (item.type === "video") {
+        const mediaItem = document.createElement("div");
+        mediaItem.className = "gallery-media-item";
         const video = document.createElement("video");
         video.controls = true;
         video.src = item.url;
         video.preload = "metadata";
-        mediaWrap.appendChild(video);
+        mediaItem.appendChild(video);
+        mediaWrap.appendChild(mediaItem);
       }
     });
 
@@ -805,6 +888,7 @@ function renderGallery() {
     elements.gallery.appendChild(section);
   });
 
+  renderGallerySideTimeline(timelineItems);
 }
 
 function renderTimeline() {
@@ -992,6 +1076,12 @@ function setupEventListeners() {
     refreshFailedGalleryImages();
   });
 
+  elements.toggleGalleryTimeline.addEventListener("click", () => {
+    state.galleryTimelineVisible = !state.galleryTimelineVisible;
+    updateGalleryTimelineVisibility();
+    renderGallery();
+  });
+
   elements.clearGallery.addEventListener("click", () => {
     state.galleryPosts = [];
     renderGallery();
@@ -1006,6 +1096,7 @@ async function init() {
   showPostsPlaceholder("Select an artist to load posts.");
   elements.artistTitle.textContent = "";
   elements.artistSubtitle.textContent = "";
+  updateGalleryTimelineVisibility();
 
   try {
     state.dataBase = await window.kemono.getDataBase();

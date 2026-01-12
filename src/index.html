@@ -46,14 +46,20 @@
                 <h2>Gallery</h2>
                 <button class="ghost" id="clearGallery">Clear gallery</button>
               </div>
-              <button class="ghost" id="refreshGalleryImages">Reload images</button>
+              <div class="panel__header-right">
+                <button class="ghost" id="refreshGalleryImages">Reload images</button>
+                <button class="ghost" id="toggleGalleryTimeline">Timeline</button>
+              </div>
             </div>
           </div>
 
-          <div class="gallery" id="gallery">
-            <div class="empty-state">
-              <h3>No posts selected</h3>
+          <div class="gallery-shell" id="galleryShell">
+            <div class="gallery" id="gallery">
+              <div class="empty-state">
+                <h3>No posts selected</h3>
+              </div>
             </div>
+            <div class="gallery-side" id="gallerySideTimeline" hidden></div>
           </div>
 
           <div class="timeline" id="timeline">

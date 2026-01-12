@@ -13,8 +13,8 @@
   --border: #223030;
   --shadow: 0 16px 36px rgba(5, 8, 8, 0.45);
   --shadow-soft: 0 10px 22px rgba(6, 10, 10, 0.35);
-  --radius: 8px;
-  --radius-sm: 6px;
+  --radius: 0px;
+  --radius-sm: 0px;
   --gap: 8px;
 }
 
@@ -61,7 +61,7 @@ body::before {
 
 *::-webkit-scrollbar-thumb {
   background-color: rgba(42, 209, 201, 0.35);
-  border-radius: 6px;
+  border-radius: 0;
   border: 2px solid transparent;
   background-clip: padding-box;
 }
@@ -78,7 +78,7 @@ body::before {
   font-size: 0.9rem;
   color: var(--muted);
   padding: 4px 8px;
-  border-radius: 6px;
+  border-radius: 0;
   background: var(--panel-2);
   border: 1px solid var(--border);
   white-space: nowrap;
@@ -100,7 +100,7 @@ select {
 button {
   border: none;
   padding: 6px 10px;
-  border-radius: 6px;
+  border-radius: 0;
   cursor: pointer;
   background: var(--accent);
   color: #031312;
@@ -172,7 +172,7 @@ button.ghost:hover {
 }
 
 .tab {
-  border-radius: 6px;
+  border-radius: 0;
   padding: 6px 10px;
   background: transparent;
   border: 1px solid var(--border);
@@ -223,6 +223,12 @@ button.ghost:hover {
   gap: 6px;
 }
 
+.panel__header-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .artist-meta span {
   color: var(--muted);
   font-size: 0.9rem;
@@ -237,7 +243,7 @@ button.ghost:hover {
 .search-row input,
 .search-row select {
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: 0;
   padding: 6px 10px;
   background: #0f1515;
   outline: none;
@@ -338,7 +344,7 @@ button.ghost:hover {
   z-index: 1;
   width: 46px;
   height: 46px;
-  border-radius: 6px;
+  border-radius: 0;
   border: 1px solid var(--border);
   background: #0d1414;
   overflow: hidden;
@@ -406,7 +412,7 @@ button.ghost:hover {
   color: var(--accent);
   font-size: 0.7rem;
   padding: 2px 6px;
-  border-radius: 4px;
+  border-radius: 0;
   letter-spacing: 0.06em;
 }
 .post-card__add {
@@ -416,7 +422,7 @@ button.ghost:hover {
   width: 28px;
   height: 28px;
   padding: 0;
-  border-radius: 6px;
+  border-radius: 0;
   background: rgba(10, 17, 17, 0.85);
   color: var(--accent);
   border: 1px solid rgba(42, 209, 201, 0.35);
@@ -449,7 +455,7 @@ button.ghost:hover {
   color: var(--muted);
   border: 1px solid var(--border);
   background: var(--panel-2);
-  border-radius: 6px;
+  border-radius: 0;
   padding: 2px 6px;
   flex-shrink: 0;
 }
@@ -474,6 +480,51 @@ button.ghost:hover {
   flex-direction: column;
   gap: 0;
   min-height: 0;
+  height: 100%;
+}
+
+.gallery-shell {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 1fr;
+}
+
+.gallery-shell.has-side {
+  grid-template-columns: 1fr 70px;
+}
+
+.gallery-side {
+  border-left: 1px solid var(--border);
+  background: #0d1313;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.gallery-side__item {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  border: none;
+  padding: 0;
+  background: #0f1515;
+  display: block;
+}
+
+.gallery-side__item img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.gallery-side__label {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  font-size: 0.7rem;
+  color: var(--muted);
+  letter-spacing: 0.06em;
 }
 
 .gallery-post {
@@ -486,6 +537,10 @@ button.ghost:hover {
   display: flex;
   flex-direction: column;
   gap: 0;
+}
+
+.gallery-media-item {
+  width: 100%;
 }
 
 .gallery-media img,
@@ -503,7 +558,7 @@ button.ghost:hover {
 .gallery-file {
   border: 1px dashed var(--border);
   padding: 8px 10px;
-  border-radius: 8px;
+  border-radius: 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -540,7 +595,7 @@ button.ghost:hover {
 .timeline-item {
   min-width: 200px;
   padding: 6px 8px;
-  border-radius: 8px;
+  border-radius: 0;
   border: 1px solid var(--border);
   background: #121a1b;
   display: grid;
@@ -559,7 +614,7 @@ button.ghost:hover {
 }
 
 .timeline-item__actions button {
-  border-radius: 6px;
+  border-radius: 0;
   padding: 4px 8px;
   font-size: 0.8rem;
 }
@@ -602,7 +657,7 @@ button.ghost:hover {
 }
 .splitter {
   width: 8px;
-  border-radius: 4px;
+  border-radius: 0;
   background: linear-gradient(180deg, rgba(42, 209, 201, 0.15), rgba(42, 209, 201, 0.4));
   cursor: col-resize;
   align-self: stretch;
