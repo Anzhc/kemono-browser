@@ -30,6 +30,11 @@ const state = {
   postsByKey: new Map(),
   postCache: new Map(),
   galleryPosts: [],
+  serializePosts: false,
+  postListItems: new Map(),
+  postsRequestId: 0,
+  postsAll: [],
+  postsAllKey: "",
   galleryTimelineVisible: false,
   outputFolder: "",
 };
@@ -57,6 +62,7 @@ const elements = {
   postsNext: document.getElementById("postsNext"),
   postsPageInfo: document.getElementById("postsPageInfo"),
   postsList: document.getElementById("postsList"),
+  serializePosts: document.getElementById("serializePosts"),
   splitterArtistsGallery: document.getElementById("splitterArtistsGallery"),
   splitterGalleryPosts: document.getElementById("splitterGalleryPosts"),
   galleryShell: document.getElementById("galleryShell"),
@@ -111,6 +117,10 @@ function capitalize(value) {
   return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
+function buildPostKey(post) {
+  return `${post.service}:${post.user}:${post.id}`;
+}
+
 function getArtistKey(artist) {
   return `${artist.service}:${artist.id}`;
 }
@@ -139,6 +149,111 @@ function setArtistView(view) {
     elements.artistTabFavorites.classList.toggle("is-active", view === "favorites");
   }
   applyArtistFilter();
+}
+
+function isNumericLabel(text) {
+  const trimmed = String(text || "").trim().toLowerCase();
+  if (!trimmed) {
+    return false;
+  }
+  if (/^\d+(?:\s*[-–—]\s*\d+)?$/.test(trimmed)) {
+    return true;
+  }
+  if (
+    /^\d+(?:\s*[-–—]\s*\d+)?(?:\s*[,&/]\s*\d+(?:\s*[-–—]\s*\d+)?)*$/.test(
+      trimmed
+    )
+  ) {
+    return true;
+  }
+  if (
+    /^(?:part|pt|chapter|ch|episode|ep|vol|volume|book|#)\s*\d+(?:\s*[-–—]\s*\d+)?$/.test(
+      trimmed
+    )
+  ) {
+    return true;
+  }
+  return false;
+}
+
+function stripSeriesSuffix(title) {
+  let text = String(title || "").trim();
+  if (!text) {
+    return "";
+  }
+  let suffix = "";
+  const bracketMatch = text.match(/\s*([\(\[\{]([^)\]\}]*)[\)\]\}])\s*$/);
+  if (bracketMatch) {
+    const inner = bracketMatch[2] || "";
+    if (isNumericLabel(inner)) {
+      text = text.slice(0, text.length - bracketMatch[0].length).trim();
+    } else {
+      suffix = ` ${bracketMatch[1].trim()}`;
+      text = text.slice(0, text.length - bracketMatch[0].length).trim();
+    }
+  }
+  text = text
+    .replace(
+      /(?:\s*[-:]*\s*(?:part|pt|chapter|ch|episode|ep|vol|volume|book|#)\s*\d+(?:\s*[-–—]\s*\d+)?|\s*[-:]*\s*\d+(?:\s*[-–—]\s*\d+)?)\s*$/i,
+      ""
+    )
+    .trim();
+  text = text.replace(/[\s\-–—]+$/u, "").trim();
+  if (!text) {
+    return String(title || "").trim();
+  }
+  return `${text}${suffix}`.trim();
+}
+
+function getSeriesKey(title) {
+  const original = String(title || "").trim().toLowerCase();
+  const stripped = stripSeriesSuffix(title).toLowerCase();
+  if (!stripped || stripped.length < 3 || stripped === original) {
+    return "";
+  }
+  return stripped;
+}
+
+function buildSerializedPosts(posts) {
+  const counts = new Map();
+  const groups = new Map();
+
+  posts.forEach((post) => {
+    const keyBase = getSeriesKey(post.title);
+    if (!keyBase) {
+      return;
+    }
+    const key = `${post.service}:${post.user}:${keyBase}`;
+    counts.set(key, (counts.get(key) || 0) + 1);
+    if (!groups.has(key)) {
+      groups.set(key, {
+        type: "group",
+        key,
+        title: stripSeriesSuffix(post.title),
+        service: post.service,
+        user: post.user,
+        posts: [],
+      });
+    }
+    groups.get(key).posts.push(post);
+  });
+
+  const seenGroups = new Set();
+  const items = [];
+  posts.forEach((post) => {
+    const keyBase = getSeriesKey(post.title);
+    const groupKey = keyBase ? `${post.service}:${post.user}:${keyBase}` : "";
+    if (groupKey && counts.get(groupKey) > 1) {
+      if (seenGroups.has(groupKey)) {
+        return;
+      }
+      seenGroups.add(groupKey);
+      items.push(groups.get(groupKey));
+      return;
+    }
+    items.push({ type: "post", key: buildPostKey(post), post });
+  });
+  return items;
 }
 
 function normalizeBytes(bytes) {
@@ -437,8 +552,7 @@ function setPostsList(posts) {
   state.posts = posts || [];
   state.postsByKey = new Map();
   state.posts.forEach((post) => {
-    const key = `${post.service}:${post.user}:${post.id}`;
-    state.postsByKey.set(key, post);
+    state.postsByKey.set(buildPostKey(post), post);
   });
 }
 
@@ -450,50 +564,137 @@ async function loadPosts() {
     return;
   }
 
-  setStatus("Loading posts...", "info");
+  const requestId = ++state.postsRequestId;
+  setStatus(state.serializePosts ? "Loading all posts..." : "Loading posts...", "info");
   elements.postsList.innerHTML = "";
   setPostsEnabled(true);
 
   try {
-    const posts = await window.kemono.getCreatorPosts(
-      state.selectedArtist.service,
-      state.selectedArtist.id,
-      {
-        offset: state.postsOffset,
-        query: state.postsQuery,
+    if (state.serializePosts) {
+      await loadSerializedPosts(requestId);
+    } else {
+      const posts = await window.kemono.getCreatorPosts(
+        state.selectedArtist.service,
+        state.selectedArtist.id,
+        {
+          offset: state.postsOffset,
+          query: state.postsQuery,
+        }
+      );
+      if (requestId !== state.postsRequestId) {
+        return;
       }
-    );
-    setPostsList(posts);
-    renderPosts();
-    setStatus("Posts loaded.", "info");
+      setPostsList(posts);
+      renderPosts();
+      setStatus("Posts loaded.", "info");
+    }
   } catch (error) {
     setStatus(`Failed to load posts: ${error.message}`, "error");
   }
 }
 
-function renderPosts() {
-  setPostsEnabled(true);
-  const totalCount = state.artistProfile?.post_count || null;
-  const currentPage = Math.floor(state.postsOffset / PAGE_SIZE) + 1;
-  const canPrev = state.postsOffset > 0;
-  let canNext = state.posts.length === PAGE_SIZE;
-
-  if (!state.postsQuery && totalCount !== null) {
-    const maxOffset = Math.max(0, totalCount - PAGE_SIZE);
-    canNext = state.postsOffset < maxOffset;
-    const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
-    elements.postsPageInfo.textContent = `Page ${currentPage} of ${totalPages} - ${formatNumber(
-      totalCount
-    )} posts`;
-  } else {
-    elements.postsPageInfo.textContent = `Page ${currentPage}`;
+async function loadSerializedPosts(requestId) {
+  const artistKey = getArtistKey(state.selectedArtist);
+  const query = state.postsQuery || "";
+  const cacheKey = `${artistKey}|${query}`;
+  if (state.postsAllKey === cacheKey && state.postsAll.length > 0) {
+    setPostsList(state.postsAll);
+    renderPosts();
+    setStatus("Posts loaded.", "info");
+    return;
   }
 
-  elements.postsPrev.disabled = !canPrev;
-  elements.postsNext.disabled = !canNext;
+  state.postsAllKey = cacheKey;
+  state.postsAll = [];
+  let offset = 0;
+  const totalCount = !query ? state.artistProfile?.post_count || null : null;
+
+  while (true) {
+    if (requestId !== state.postsRequestId) {
+      return;
+    }
+    const batch = await window.kemono.getCreatorPosts(
+      state.selectedArtist.service,
+      state.selectedArtist.id,
+      {
+        offset,
+        query,
+      }
+    );
+    if (requestId !== state.postsRequestId) {
+      return;
+    }
+    if (!Array.isArray(batch) || batch.length === 0) {
+      break;
+    }
+    state.postsAll.push(...batch);
+    offset += batch.length;
+    setStatus(`Loaded ${formatNumber(state.postsAll.length)} posts...`, "info");
+    if (batch.length < PAGE_SIZE) {
+      break;
+    }
+    if (totalCount !== null && offset >= totalCount) {
+      break;
+    }
+  }
+
+  setPostsList(state.postsAll);
+  renderPosts();
+  setStatus(`Loaded ${formatNumber(state.postsAll.length)} posts.`, "info");
+}
+
+function renderPosts() {
+  setPostsEnabled(true);
+  const isSerialized = state.serializePosts;
+  const totalCount = state.artistProfile?.post_count || null;
+  const currentPage = Math.floor(state.postsOffset / PAGE_SIZE) + 1;
+  const listItems = isSerialized
+    ? buildSerializedPosts(state.posts)
+    : state.posts.map((post) => ({
+        type: "post",
+        key: buildPostKey(post),
+        post,
+      }));
+
+  let pageItems = listItems;
+  if (isSerialized) {
+    const totalItems = listItems.length;
+    const totalPages = Math.max(1, Math.ceil(totalItems / PAGE_SIZE));
+    const maxOffset = Math.max(0, totalItems - PAGE_SIZE);
+    const canPrev = state.postsOffset > 0;
+    const canNext = state.postsOffset < maxOffset;
+    elements.postsPrev.disabled = !canPrev;
+    elements.postsNext.disabled = !canNext;
+    elements.postsPageInfo.textContent = `Page ${currentPage} of ${totalPages} - ${formatNumber(
+      totalItems
+    )} entries`;
+    pageItems = listItems.slice(
+      state.postsOffset,
+      state.postsOffset + PAGE_SIZE
+    );
+  } else {
+    const canPrev = state.postsOffset > 0;
+    let canNext = state.posts.length === PAGE_SIZE;
+    if (!state.postsQuery && totalCount !== null) {
+      const maxOffset = Math.max(0, totalCount - PAGE_SIZE);
+      canNext = state.postsOffset < maxOffset;
+      const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
+      elements.postsPageInfo.textContent = `Page ${currentPage} of ${totalPages} - ${formatNumber(
+        totalCount
+      )} posts`;
+    } else {
+      elements.postsPageInfo.textContent = `Page ${currentPage}`;
+    }
+    elements.postsPrev.disabled = !canPrev;
+    elements.postsNext.disabled = !canNext;
+  }
 
   elements.postsList.innerHTML = "";
-  if (state.posts.length === 0) {
+  state.postListItems = new Map(
+    pageItems.map((item) => [item.key, item])
+  );
+
+  if (pageItems.length === 0) {
     const empty = document.createElement("div");
     empty.className = "card post-placeholder";
     empty.textContent = "No posts found.";
@@ -501,17 +702,24 @@ function renderPosts() {
     return;
   }
 
-  state.posts.forEach((post) => {
+  pageItems.forEach((item) => {
+    const post =
+      item.type === "group" ? item.posts[0] : item.post;
+    if (!post) {
+      return;
+    }
     const card = document.createElement("div");
     card.className = "card post-card";
-    card.dataset.postId = post.id;
-    card.dataset.service = post.service;
-    card.dataset.user = post.user;
+    card.dataset.itemKey = item.key;
+    card.dataset.itemType = item.type;
 
     const thumb = document.createElement("div");
     thumb.className = "post-card__thumb";
     const thumbData = pickPostThumb(post);
-    const hasGif = postHasGif(post);
+    const hasGif =
+      item.type === "group"
+        ? item.posts.some((groupPost) => postHasGif(groupPost))
+        : postHasGif(post);
     if (thumbData && thumbData.type === "image") {
       const img = document.createElement("img");
       img.alt = post.title || "Post image";
@@ -549,10 +757,20 @@ function renderPosts() {
     footer.className = "post-card__footer";
     const title = document.createElement("span");
     title.className = "post-card__title";
-    title.textContent = post.title || "Untitled";
+    title.textContent =
+      item.type === "group"
+        ? item.title || post.title || "Untitled"
+        : post.title || "Untitled";
     const count = document.createElement("span");
     count.className = "post-card__count";
-    count.textContent = String(getPostMediaCount(post));
+    const totalMedia =
+      item.type === "group"
+        ? item.posts.reduce(
+            (sum, groupPost) => sum + getPostMediaCount(groupPost),
+            0
+          )
+        : getPostMediaCount(post);
+    count.textContent = String(totalMedia);
     footer.appendChild(title);
     footer.appendChild(count);
 
@@ -1151,6 +1369,53 @@ function setupSplitters() {
   });
 }
 
+function getPostTimestamp(post) {
+  if (!post) {
+    return 0;
+  }
+  const raw =
+    post.published ?? post.added ?? post.updated ?? post.created ?? 0;
+  if (!raw) {
+    return 0;
+  }
+  if (typeof raw === "number") {
+    return raw < 1e12 ? raw * 1000 : raw;
+  }
+  const parsed = Date.parse(raw);
+  return Number.isNaN(parsed) ? 0 : parsed;
+}
+
+function mergeMediaCollections(posts) {
+  const media = [];
+  const files = [];
+  const mediaSeen = new Set();
+  const fileSeen = new Set();
+  posts.forEach((post) => {
+    const collection = buildMediaCollection(post);
+    collection.media.forEach((item) => {
+      const key = item.path || item.url;
+      if (key && mediaSeen.has(key)) {
+        return;
+      }
+      if (key) {
+        mediaSeen.add(key);
+      }
+      media.push(item);
+    });
+    collection.files.forEach((item) => {
+      const key = item.path || item.url || item.name;
+      if (key && fileSeen.has(key)) {
+        return;
+      }
+      if (key) {
+        fileSeen.add(key);
+      }
+      files.push(item);
+    });
+  });
+  return { media, files };
+}
+
 async function addPostToGallery(postSummary, { append }) {
   if (!postSummary) {
     return;
@@ -1190,6 +1455,53 @@ async function addPostToGallery(postSummary, { append }) {
 
   renderGallery();
   renderTimeline();
+}
+
+async function addPostGroupToGallery(group, { append }) {
+  if (!group || !Array.isArray(group.posts) || group.posts.length === 0) {
+    return;
+  }
+  const groupKey = `series:${group.key}`;
+  const existingIndex = state.galleryPosts.findIndex(
+    (item) => item.key === groupKey
+  );
+  if (existingIndex !== -1 && append) {
+    return;
+  }
+
+  setStatus("Loading series...", "info");
+  const sorted = [...group.posts].sort(
+    (a, b) => getPostTimestamp(a) - getPostTimestamp(b)
+  );
+  const fullPosts = [];
+  for (const post of sorted) {
+    const full = await getPostDetails(post.service, post.user, post.id);
+    if (full) {
+      fullPosts.push(full);
+    }
+  }
+  const { media, files } = mergeMediaCollections(fullPosts);
+  const entry = {
+    key: groupKey,
+    id: groupKey,
+    service: group.service,
+    user: group.user,
+    title: group.title || "Series",
+    published: sorted[0]?.published || null,
+    media,
+    files,
+  };
+
+  if (append) {
+    state.galleryPosts = [...state.galleryPosts, entry];
+  } else {
+    clearMemoryMedia();
+    state.galleryPosts = [entry];
+  }
+
+  renderGallery();
+  renderTimeline();
+  setStatus("Series loaded.", "info");
 }
 
 function renderGallery() {
@@ -1484,12 +1796,24 @@ function setupEventListeners() {
     }
   });
 
+  if (elements.serializePosts) {
+    elements.serializePosts.addEventListener("change", (event) => {
+      state.serializePosts = event.target.checked;
+      state.postsOffset = 0;
+      loadPosts();
+    });
+  }
+
   elements.postsPrev.addEventListener("click", () => {
     if (!state.selectedArtist) {
       return;
     }
     state.postsOffset = Math.max(0, state.postsOffset - PAGE_SIZE);
-    loadPosts();
+    if (state.serializePosts) {
+      renderPosts();
+    } else {
+      loadPosts();
+    }
   });
 
   elements.postsNext.addEventListener("click", () => {
@@ -1497,7 +1821,11 @@ function setupEventListeners() {
       return;
     }
     state.postsOffset += PAGE_SIZE;
-    loadPosts();
+    if (state.serializePosts) {
+      renderPosts();
+    } else {
+      loadPosts();
+    }
   });
 
   elements.postsList.addEventListener("click", (event) => {
@@ -1506,12 +1834,16 @@ function setupEventListeners() {
     if (!card) {
       return;
     }
-    const key = `${card.dataset.service}:${card.dataset.user}:${card.dataset.postId}`;
-    const post = state.postsByKey.get(key);
-    if (addButton) {
-      addPostToGallery(post, { append: true });
+    const itemKey = card.dataset.itemKey;
+    const item = state.postListItems.get(itemKey);
+    if (!item) {
+      return;
+    }
+    const append = Boolean(addButton);
+    if (item.type === "group") {
+      addPostGroupToGallery(item, { append });
     } else {
-      addPostToGallery(post, { append: false });
+      addPostToGallery(item.post, { append });
     }
   });
 
@@ -1521,9 +1853,16 @@ function setupEventListeners() {
       return;
     }
     event.preventDefault();
-    const key = `${card.dataset.service}:${card.dataset.user}:${card.dataset.postId}`;
-    const post = state.postsByKey.get(key);
-    addPostToGallery(post, { append: true });
+    const itemKey = card.dataset.itemKey;
+    const item = state.postListItems.get(itemKey);
+    if (!item) {
+      return;
+    }
+    if (item.type === "group") {
+      addPostGroupToGallery(item, { append: true });
+    } else {
+      addPostToGallery(item.post, { append: true });
+    }
   });
 
   elements.timeline.addEventListener("click", (event) => {

@@ -233,6 +233,28 @@ button.ghost:hover {
   gap: 6px;
 }
 
+.panel__options {
+  margin-top: 4px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.85rem;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.toggle input {
+  width: 14px;
+  height: 14px;
+  accent-color: var(--accent);
+}
+
 .panel__tabs {
   display: inline-flex;
   gap: 6px;
