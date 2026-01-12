@@ -35,7 +35,7 @@ const state = {
 const gifPreviewCache = new Map();
 const downloadedImages = new Set();
 const memoryMedia = new Map();
-const zipProgress = new Map();
+const downloadProgress = new Map();
 
 const elements = {
   statusMessage: document.getElementById("statusMessage"),
@@ -81,6 +81,13 @@ function formatMb(value) {
   return (value / (1024 * 1024)).toFixed(1);
 }
 
+function sanitizeFilename(value) {
+  return String(value || "")
+    .replace(/[<>:"/\\|?*]/g, "_")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function formatDate(value) {
   if (!value) {
     return "Unknown";
@@ -98,6 +105,22 @@ function capitalize(value) {
     return "";
   }
   return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
+function normalizeBytes(bytes) {
+  if (!bytes) {
+    return new Uint8Array();
+  }
+  if (bytes instanceof Uint8Array) {
+    return bytes;
+  }
+  if (bytes instanceof ArrayBuffer) {
+    return new Uint8Array(bytes);
+  }
+  if (ArrayBuffer.isView(bytes)) {
+    return new Uint8Array(bytes.buffer);
+  }
+  return new Uint8Array(bytes);
 }
 
 function debounce(fn, delay = 300) {
@@ -609,43 +632,43 @@ function registerGalleryImage(img, src, options = {}) {
   });
 }
 
-function attachZipProgress(host, requestId) {
+function attachDownloadProgress(host, requestId) {
   if (!host) {
     return null;
   }
-  const existing = host.querySelector(".zip-progress");
+  const existing = host.querySelector(".download-progress");
   if (existing) {
     existing.remove();
   }
   const wrap = document.createElement("div");
-  wrap.className = "zip-progress";
+  wrap.className = "download-progress";
   wrap.dataset.requestId = requestId;
   const bar = document.createElement("div");
-  bar.className = "zip-progress__bar";
+  bar.className = "download-progress__bar";
   const fill = document.createElement("div");
-  fill.className = "zip-progress__fill";
+  fill.className = "download-progress__fill";
   bar.appendChild(fill);
   const meta = document.createElement("div");
-  meta.className = "zip-progress__meta";
+  meta.className = "download-progress__meta";
   meta.textContent = "Starting download...";
   wrap.appendChild(bar);
   wrap.appendChild(meta);
   host.appendChild(wrap);
   const entry = { wrap, bar, fill, meta };
-  zipProgress.set(requestId, entry);
+  downloadProgress.set(requestId, entry);
   return entry;
 }
 
-function updateZipProgress(data) {
+function updateDownloadProgress(data) {
   if (!data || !data.requestId) {
     return;
   }
-  const entry = zipProgress.get(data.requestId);
+  const entry = downloadProgress.get(data.requestId);
   if (!entry) {
     return;
   }
   if (!entry.wrap.isConnected) {
-    zipProgress.delete(data.requestId);
+    downloadProgress.delete(data.requestId);
     return;
   }
   if (data.error) {
@@ -674,7 +697,7 @@ function updateZipProgress(data) {
   if (data.done) {
     entry.bar.classList.remove("is-indeterminate");
     entry.fill.style.width = "100%";
-    entry.meta.textContent = "Extracting...";
+    entry.meta.textContent = data.doneLabel || "Extracting...";
   }
 }
 
@@ -803,7 +826,7 @@ async function previewZipInGallery(url, label, host, button) {
   const requestId = `zip-${Date.now()}-${Math.random()
     .toString(36)
     .slice(2)}`;
-  const progress = attachZipProgress(host, requestId);
+  const progress = attachDownloadProgress(host, requestId);
   if (button) {
     button.disabled = true;
   }
@@ -848,7 +871,115 @@ async function previewZipInGallery(url, label, host, button) {
   } finally {
     if (progress) {
       progress.wrap.remove();
-      zipProgress.delete(requestId);
+      downloadProgress.delete(requestId);
+    }
+    if (button) {
+      button.disabled = false;
+    }
+  }
+}
+
+async function previewPdfInGallery(url, label, host, button) {
+  const requestId = `pdf-${Date.now()}-${Math.random()
+    .toString(36)
+    .slice(2)}`;
+  const progress = attachDownloadProgress(host, requestId);
+  if (button) {
+    button.disabled = true;
+  }
+  setStatus("Loading PDF...", "info");
+  try {
+    if (!window.pdfjsLib) {
+      throw new Error("PDF renderer is not available.");
+    }
+    const bytes = window.kemono.fetchFileBytes
+      ? await window.kemono.fetchFileBytes(url, requestId)
+      : await window.kemono.getMediaBytes(url);
+    if (progress) {
+      progress.bar.classList.remove("is-indeterminate");
+      progress.fill.style.width = "100%";
+      progress.meta.textContent = "Rendering pages...";
+    }
+    const pdfData = normalizeBytes(bytes);
+    const loadingTask = window.pdfjsLib.getDocument({ data: pdfData });
+    const pdf = await loadingTask.promise;
+    const pageCount = pdf.numPages || 0;
+    const pages = [];
+    const rawName = label || "document.pdf";
+    const baseName =
+      sanitizeFilename(rawName.replace(/\.pdf$/i, "")) || "document";
+
+    for (let i = 1; i <= pageCount; i += 1) {
+      if (progress) {
+        progress.meta.textContent = `Rendering ${i}/${pageCount}...`;
+      }
+      const page = await pdf.getPage(i);
+      const baseViewport = page.getViewport({ scale: 1 });
+      const fullDpi = 300;
+      const scale = Math.max(1, fullDpi / 72);
+      const viewport = page.getViewport({ scale });
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.max(1, Math.floor(viewport.width));
+      canvas.height = Math.max(1, Math.floor(viewport.height));
+      const context = canvas.getContext("2d", { alpha: false });
+      if (!context) {
+        if (page.cleanup) {
+          page.cleanup();
+        }
+        continue;
+      }
+      await page.render({ canvasContext: context, viewport }).promise;
+      const blob = await new Promise((resolve) =>
+        canvas.toBlob(resolve, "image/png")
+      );
+      if (page.cleanup) {
+        page.cleanup();
+      }
+      if (!blob) {
+        continue;
+      }
+      const pageName = `${baseName}-p${String(i).padStart(3, "0")}.png`;
+      const objectUrl = URL.createObjectURL(blob);
+      memoryMedia.set(objectUrl, { blob, name: pageName });
+      pages.push({
+        name: pageName,
+        url: objectUrl,
+        type: "image",
+        path: "",
+        isGif: false,
+        thumbUrl: objectUrl,
+        memoryKey: objectUrl,
+      });
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+    }
+    if (typeof pdf.cleanup === "function") {
+      pdf.cleanup();
+    }
+    if (pages.length === 0) {
+      setStatus("No pages rendered from PDF.", "info");
+      return;
+    }
+    const key = `pdf:${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const entry = {
+      key,
+      id: key,
+      service: "pdf",
+      user: "pdf",
+      title: label || "PDF preview",
+      published: null,
+      media: pages,
+      files: [],
+    };
+    state.galleryPosts = [...state.galleryPosts, entry];
+    renderGallery();
+    renderTimeline();
+    setStatus(`Added ${pages.length} pages from PDF.`, "info");
+  } catch (error) {
+    setStatus(`PDF preview failed: ${error.message}`, "error");
+  } finally {
+    if (progress) {
+      progress.wrap.remove();
+      downloadProgress.delete(requestId);
     }
     if (button) {
       button.disabled = false;
@@ -1076,9 +1207,24 @@ function renderGallery() {
         });
         actions.appendChild(link);
 
-        const isZip =
-          (item.name && item.name.toLowerCase().endsWith(".zip")) ||
-          (item.url && item.url.toLowerCase().includes(".zip"));
+        const lowerName = (item.name || "").toLowerCase();
+        const lowerUrl = (item.url || "").toLowerCase();
+        const isZip = lowerName.endsWith(".zip") || lowerUrl.includes(".zip");
+        const isPdf = lowerName.endsWith(".pdf") || lowerUrl.includes(".pdf");
+        if (isPdf) {
+          const preview = document.createElement("button");
+          preview.className = "ghost";
+          preview.textContent = "Preview";
+          preview.addEventListener("click", async () => {
+            await previewPdfInGallery(
+              item.url,
+              item.name || "Document",
+              file,
+              preview
+            );
+          });
+          actions.appendChild(preview);
+        }
         if (isZip) {
           const preview = document.createElement("button");
           preview.className = "ghost";
@@ -1362,8 +1508,17 @@ async function init() {
   setupEventListeners();
   if (window.kemono.onZipProgress) {
     window.kemono.onZipProgress((data) => {
-      updateZipProgress(data);
+      updateDownloadProgress(data);
     });
+  }
+  if (window.kemono.onFileProgress) {
+    window.kemono.onFileProgress((data) => {
+      updateDownloadProgress(data);
+    });
+  }
+  if (window.pdfjsLib && window.pdfjsLib.GlobalWorkerOptions) {
+    window.pdfjsLib.GlobalWorkerOptions.workerSrc =
+      "../node_modules/pdfjs-dist/legacy/build/pdf.worker.min.mjs";
   }
   setPostsEnabled(false);
   showPostsPlaceholder("Select an artist to load posts.");

@@ -589,7 +589,7 @@ button.ghost:hover {
   gap: 6px;
 }
 
-.zip-progress {
+.download-progress {
   flex-basis: 100%;
   display: flex;
   flex-direction: column;
@@ -597,7 +597,7 @@ button.ghost:hover {
   margin-top: 4px;
 }
 
-.zip-progress__bar {
+.download-progress__bar {
   position: relative;
   height: 3px;
   background: #0c1111;
@@ -605,7 +605,7 @@ button.ghost:hover {
   overflow: hidden;
 }
 
-.zip-progress__fill {
+.download-progress__fill {
   position: absolute;
   inset: 0 auto 0 0;
   width: 0%;
@@ -613,12 +613,12 @@ button.ghost:hover {
   transition: width 0.2s linear;
 }
 
-.zip-progress__bar.is-indeterminate .zip-progress__fill {
+.download-progress__bar.is-indeterminate .download-progress__fill {
   width: 40%;
   animation: zip-indeterminate 1.2s linear infinite;
 }
 
-.zip-progress__meta {
+.download-progress__meta {
   font-size: 0.75rem;
   color: var(--muted);
 }
