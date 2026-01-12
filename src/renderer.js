@@ -29,9 +29,11 @@ const state = {
   postCache: new Map(),
   galleryPosts: [],
   galleryTimelineVisible: false,
+  outputFolder: "",
 };
 
 const gifPreviewCache = new Map();
+const downloadedImages = new Set();
 
 const elements = {
   statusMessage: document.getElementById("statusMessage"),
@@ -58,6 +60,7 @@ const elements = {
   refreshGalleryImages: document.getElementById("refreshGalleryImages"),
   clearGallery: document.getElementById("clearGallery"),
   toggleGalleryTimeline: document.getElementById("toggleGalleryTimeline"),
+  setOutputFolder: document.getElementById("setOutputFolder"),
 };
 
 function setStatus(message, tone = "info") {
@@ -610,6 +613,20 @@ function refreshFailedGalleryImages() {
   });
 }
 
+async function ensureOutputFolder() {
+  if (state.outputFolder) {
+    return state.outputFolder;
+  }
+  const folder = await window.kemono.selectOutputFolder();
+  if (folder) {
+    state.outputFolder = folder;
+    setStatus("Output folder set.", "info");
+    return folder;
+  }
+  setStatus("Output folder not set.", "error");
+  return "";
+}
+
 function updateGalleryTimelineVisibility() {
   if (
     !elements.galleryShell ||
@@ -778,7 +795,6 @@ async function addPostToGallery(postSummary, { append }) {
   );
 
   if (existingIndex !== -1 && append) {
-    scrollToGalleryPost(key);
     return;
   }
 
@@ -802,7 +818,6 @@ async function addPostToGallery(postSummary, { append }) {
 
   renderGallery();
   renderTimeline();
-  scrollToGalleryPost(key);
 }
 
 function renderGallery() {
@@ -846,6 +861,9 @@ function renderGallery() {
         img.src = item.url;
         img.alt = item.name || entry.title;
         img.decoding = "async";
+        if (downloadedImages.has(item.url)) {
+          img.classList.add("is-downloaded");
+        }
         mediaItem.appendChild(img);
         mediaWrap.appendChild(mediaItem);
         timelineItems.push({
@@ -1082,10 +1100,34 @@ function setupEventListeners() {
     renderGallery();
   });
 
+  elements.setOutputFolder.addEventListener("click", async () => {
+    await ensureOutputFolder();
+  });
+
   elements.clearGallery.addEventListener("click", () => {
     state.galleryPosts = [];
     renderGallery();
     renderTimeline();
+  });
+
+  elements.gallery.addEventListener("contextmenu", async (event) => {
+    const img = event.target.closest("img");
+    if (!img || !img.dataset.src || img.dataset.loadState !== "loaded") {
+      return;
+    }
+    event.preventDefault();
+    const folder = await ensureOutputFolder();
+    if (!folder) {
+      return;
+    }
+    try {
+      const saved = await window.kemono.downloadImage(img.dataset.src, folder);
+      img.classList.add("is-downloaded");
+      downloadedImages.add(img.dataset.src);
+      setStatus(`Saved to ${saved}`, "info");
+    } catch (error) {
+      setStatus(`Download failed: ${error.message}`, "error");
+    }
   });
 }
 
@@ -1101,6 +1143,7 @@ async function init() {
   try {
     state.dataBase = await window.kemono.getDataBase();
     state.thumbBase = await window.kemono.getThumbBase();
+    state.outputFolder = (await window.kemono.getOutputFolder()) || "";
     state.creators = await window.kemono.getCreators();
     state.creatorsSorted = [...state.creators].sort(
       (a, b) => (b.favorited || 0) - (a.favorited || 0)

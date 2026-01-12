@@ -12,4 +12,8 @@ contextBridge.exposeInMainWorld("kemono", {
   getThumbBase: () => ipcRenderer.invoke("api:getThumbBase"),
   getMediaBytes: (path) => ipcRenderer.invoke("api:getMediaBytes", { path }),
   openExternal: (url) => ipcRenderer.invoke("app:openExternal", url),
+  selectOutputFolder: () => ipcRenderer.invoke("app:selectOutputFolder"),
+  getOutputFolder: () => ipcRenderer.invoke("app:getOutputFolder"),
+  downloadImage: (url, folder) =>
+    ipcRenderer.invoke("app:downloadImage", { url, folder }),
 });

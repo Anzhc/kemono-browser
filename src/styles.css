@@ -82,6 +82,10 @@ body::before {
   background: var(--panel-2);
   border: 1px solid var(--border);
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+  min-width: 0;
 }
 
 .panel__status[data-tone="error"] {
@@ -520,6 +524,11 @@ button.ghost:hover {
   display: block;
 }
 
+.gallery-side__item img.is-downloaded {
+  outline: 2px solid #2ad17a;
+  outline-offset: -1px;
+}
+
 .gallery-side__label {
   display: grid;
   place-items: center;
@@ -552,6 +561,10 @@ button.ghost:hover {
   border-radius: 0;
   border: none;
   background: #0e1515;
+}
+
+.gallery-media img.is-downloaded {
+  border: 2px solid #2ad17a;
 }
 
 .gallery-media video {

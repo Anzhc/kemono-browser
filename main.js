@@ -1,9 +1,11 @@
-const { app, BrowserWindow, ipcMain, shell, Menu } = require("electron");
+const { app, BrowserWindow, ipcMain, shell, Menu, dialog } = require("electron");
 const path = require("path");
+const fs = require("fs");
 
 const API_BASE = "https://kemono.cr/api/v1";
 
 let creatorsCache = null;
+let outputFolder = "";
 
 function buildQuery(params = {}) {
   const search = new URLSearchParams();
@@ -115,6 +117,49 @@ app.whenReady().then(() => {
 
   ipcMain.handle("app:openExternal", async (_event, url) => {
     return shell.openExternal(url);
+  });
+
+  ipcMain.handle("app:selectOutputFolder", async () => {
+    const result = await dialog.showOpenDialog({
+      properties: ["openDirectory"],
+    });
+    if (result.canceled || result.filePaths.length === 0) {
+      return null;
+    }
+    outputFolder = result.filePaths[0];
+    return outputFolder;
+  });
+
+  ipcMain.handle("app:getOutputFolder", async () => {
+    return outputFolder || null;
+  });
+
+  ipcMain.handle("app:downloadImage", async (_event, { url, folder }) => {
+    const targetFolder = folder || outputFolder;
+    if (!targetFolder) {
+      throw new Error("Output folder is not set.");
+    }
+    const parsed = new URL(url);
+    const baseName = path.basename(parsed.pathname) || "image";
+    const finalPath = (name) => path.join(targetFolder, name);
+    const ext = path.extname(baseName);
+    const nameOnly = ext ? baseName.slice(0, -ext.length) : baseName;
+    let candidate = finalPath(baseName);
+    let index = 1;
+    while (fs.existsSync(candidate)) {
+      const nextName = `${nameOnly} (${index})${ext}`;
+      candidate = finalPath(nextName);
+      index += 1;
+    }
+
+    const response = await fetch(url);
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(`Download failed ${response.status}: ${text}`);
+    }
+    const buffer = Buffer.from(await response.arrayBuffer());
+    fs.writeFileSync(candidate, buffer);
+    return candidate;
   });
 
   createWindow();
