@@ -126,11 +126,42 @@ function getMediaType(path) {
   return "file";
 }
 
+function isGifPath(path) {
+  return getExtension(path) === "gif";
+}
+
 function buildMediaUrl(path) {
   if (!path) {
     return "";
   }
   return `${state.dataBase}${path}`;
+}
+
+async function setStaticGifPreview(img, path) {
+  try {
+    const bytes = await window.kemono.getMediaBytes(path);
+    const blob = new Blob([bytes], { type: "image/gif" });
+    const bitmap = await createImageBitmap(blob);
+    const canvas = document.createElement("canvas");
+    canvas.width = bitmap.width;
+    canvas.height = bitmap.height;
+    const context = canvas.getContext("2d");
+    if (context) {
+      context.drawImage(bitmap, 0, 0);
+      img.src = canvas.toDataURL("image/png");
+    } else {
+      img.src = buildMediaUrl(path);
+    }
+    if (typeof bitmap.close === "function") {
+      bitmap.close();
+    }
+  } catch (error) {
+    img.remove();
+    const label = document.createElement("div");
+    label.className = "post-card__thumb-label";
+    label.textContent = "GIF preview unavailable";
+    img.parentElement?.appendChild(label);
+  }
 }
 
 function applyArtistFilter() {
@@ -308,14 +339,26 @@ function renderPosts() {
     const thumb = document.createElement("div");
     thumb.className = "post-card__thumb";
     const thumbData = pickPostThumb(post);
+    const hasGif = postHasGif(post);
     if (thumbData && thumbData.type === "image") {
       const img = document.createElement("img");
-      img.src = buildMediaUrl(thumbData.path);
       img.alt = post.title || "Post image";
       img.loading = "lazy";
       thumb.appendChild(img);
+      if (thumbData.isGif) {
+        setStaticGifPreview(img, thumbData.path);
+      } else {
+        img.src = buildMediaUrl(thumbData.path);
+      }
     } else {
       thumb.textContent = thumbData?.type === "video" ? "video" : "file";
+    }
+
+    if (hasGif) {
+      const badge = document.createElement("span");
+      badge.className = "post-card__badge";
+      badge.textContent = "GIF";
+      thumb.appendChild(badge);
     }
 
     const addButton = document.createElement("button");
@@ -350,20 +393,40 @@ function pickPostThumb(post) {
   if (Array.isArray(post.attachments)) {
     candidates.push(...post.attachments);
   }
+  let gifCandidate = null;
   for (const item of candidates) {
     if (!item || !item.path) {
       continue;
     }
     const type = getMediaType(item.path);
     if (type === "image") {
-      return { type, path: item.path };
+      const isGif = isGifPath(item.path);
+      if (!isGif) {
+        return { type, path: item.path, isGif };
+      }
+      if (!gifCandidate) {
+        gifCandidate = { type, path: item.path, isGif };
+      }
     }
   }
-  if (candidates.length > 0) {
+  if (gifCandidate) {
+    return gifCandidate;
+  }
+  if (candidates.length > 0 && candidates[0].path) {
     const type = getMediaType(candidates[0].path);
-    return { type, path: candidates[0].path };
+    return { type, path: candidates[0].path, isGif: isGifPath(candidates[0].path) };
   }
   return null;
+}
+
+function postHasGif(post) {
+  if (post.file && post.file.path && isGifPath(post.file.path)) {
+    return true;
+  }
+  if (Array.isArray(post.attachments)) {
+    return post.attachments.some((item) => item && item.path && isGifPath(item.path));
+  }
+  return false;
 }
 
 function getPostMediaCount(post) {
@@ -545,15 +608,6 @@ function renderGallery() {
     section.className = "gallery-post";
     section.id = `gallery-post-${entry.key}`;
 
-    const title = document.createElement("h3");
-    title.textContent = entry.title;
-
-    const meta = document.createElement("div");
-    meta.className = "gallery-post__meta";
-    meta.textContent = `${capitalize(entry.service)} - ${formatDate(
-      entry.published
-    )} - ${entry.media.length} media`;
-
     const mediaWrap = document.createElement("div");
     mediaWrap.className = "gallery-media";
 
@@ -598,8 +652,6 @@ function renderGallery() {
       });
     }
 
-    section.appendChild(title);
-    section.appendChild(meta);
     section.appendChild(mediaWrap);
     elements.gallery.appendChild(section);
   });

@@ -95,6 +95,18 @@ app.whenReady().then(() => {
     return "https://kemono.cr/data";
   });
 
+  ipcMain.handle("api:getMediaBytes", async (_event, { path }) => {
+    const base = "https://kemono.cr/data";
+    const url = path.startsWith("http") ? path : `${base}${path}`;
+    const response = await fetch(url);
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(`Media ${response.status} ${response.statusText}: ${text}`);
+    }
+    const buffer = Buffer.from(await response.arrayBuffer());
+    return buffer;
+  });
+
   ipcMain.handle("app:openExternal", async (_event, url) => {
     return shell.openExternal(url);
   });
