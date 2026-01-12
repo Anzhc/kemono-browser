@@ -48,7 +48,8 @@ const elements = {
   postsNext: document.getElementById("postsNext"),
   postsPageInfo: document.getElementById("postsPageInfo"),
   postsList: document.getElementById("postsList"),
-  splitter: document.getElementById("splitter"),
+  splitterArtistsGallery: document.getElementById("splitterArtistsGallery"),
+  splitterGalleryPosts: document.getElementById("splitterGalleryPosts"),
   gallery: document.getElementById("gallery"),
   timeline: document.getElementById("timeline"),
   clearGallery: document.getElementById("clearGallery"),
@@ -547,50 +548,42 @@ function buildMediaCollection(post) {
   return { media, files };
 }
 
-function setupSplitter() {
-  if (!elements.splitter) {
+function setupSplitter(splitter, onMove) {
+  if (!splitter) {
     return;
   }
-  const workspace = elements.splitter.closest(".workspace");
+  const workspace = splitter.closest(".workspace");
   if (!workspace) {
     return;
   }
 
   let dragging = false;
 
+  const handleMove = (event) => {
+    if (!dragging) {
+      return;
+    }
+    onMove(event, workspace, splitter);
+  };
+
   const stopDrag = () => {
     if (!dragging) {
       return;
     }
     dragging = false;
-    elements.splitter.classList.remove("is-dragging");
+    splitter.classList.remove("is-dragging");
     document.body.style.cursor = "";
     document.body.style.userSelect = "";
-    window.removeEventListener("mousemove", onMove);
+    window.removeEventListener("mousemove", handleMove);
     window.removeEventListener("mouseup", stopDrag);
   };
 
-  const onMove = (event) => {
-    if (!dragging) {
-      return;
-    }
-    const rect = workspace.getBoundingClientRect();
-    const leftWidth = workspace.children[0]?.getBoundingClientRect().width || 0;
-    const splitterWidth = elements.splitter.getBoundingClientRect().width;
-    const minPosts = 260;
-    const minGallery = 280;
-    const maxPosts = rect.width - leftWidth - splitterWidth - minGallery;
-    const raw = event.clientX - rect.left - leftWidth - splitterWidth / 2;
-    const next = Math.max(minPosts, Math.min(maxPosts, raw));
-    workspace.style.setProperty("--posts-width", `${next}px`);
-  };
-
-  elements.splitter.addEventListener("mousedown", (event) => {
+  splitter.addEventListener("mousedown", (event) => {
     dragging = true;
-    elements.splitter.classList.add("is-dragging");
+    splitter.classList.add("is-dragging");
     document.body.style.cursor = "col-resize";
     document.body.style.userSelect = "none";
-    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mousemove", handleMove);
     window.addEventListener("mouseup", stopDrag);
     event.preventDefault();
   });
@@ -600,6 +593,51 @@ function setupSplitter() {
     if (document.hidden) {
       stopDrag();
     }
+  });
+}
+
+function setupSplitters() {
+  setupSplitter(elements.splitterArtistsGallery, (event, workspace, splitter) => {
+    const rect = workspace.getBoundingClientRect();
+    const style = getComputedStyle(workspace);
+    const columnGap = parseFloat(style.columnGap) || 0;
+    const totalGap = columnGap * 4;
+    const available = rect.width - totalGap;
+    const splitterWidth = splitter.getBoundingClientRect().width;
+    const otherSplitterWidth = elements.splitterGalleryPosts
+      ? elements.splitterGalleryPosts.getBoundingClientRect().width
+      : 0;
+    const minArtists = 220;
+    const minGallery = 320;
+    const minPosts = 240;
+    const maxArtists =
+      available - splitterWidth - otherSplitterWidth - minGallery - minPosts;
+    const artistsRect = splitter.previousElementSibling?.getBoundingClientRect();
+    const raw = event.clientX - (artistsRect?.left || rect.left);
+    const next = Math.max(minArtists, Math.min(maxArtists, raw));
+    workspace.style.setProperty("--artists-width", `${next}px`);
+  });
+
+  setupSplitter(elements.splitterGalleryPosts, (event, workspace, splitter) => {
+    const rect = workspace.getBoundingClientRect();
+    const style = getComputedStyle(workspace);
+    const columnGap = parseFloat(style.columnGap) || 0;
+    const totalGap = columnGap * 4;
+    const available = rect.width - totalGap;
+    const splitterWidth = splitter.getBoundingClientRect().width;
+    const otherSplitterWidth = elements.splitterArtistsGallery
+      ? elements.splitterArtistsGallery.getBoundingClientRect().width
+      : 0;
+    const minGallery = 320;
+    const minPosts = 240;
+    const artistsPanel = elements.splitterArtistsGallery?.previousElementSibling;
+    const artistsWidth = artistsPanel?.getBoundingClientRect().width || 0;
+    const galleryRect = splitter.previousElementSibling?.getBoundingClientRect();
+    const maxGallery =
+      available - otherSplitterWidth - splitterWidth - artistsWidth - minPosts;
+    const raw = event.clientX - (galleryRect?.left || rect.left);
+    const next = Math.max(minGallery, Math.min(maxGallery, raw));
+    workspace.style.setProperty("--gallery-width", `${next}px`);
   });
 }
 
@@ -650,7 +688,7 @@ function renderGallery() {
   if (state.galleryPosts.length === 0) {
     const empty = document.createElement("div");
     empty.className = "empty-state";
-    empty.innerHTML = "<h3>No posts selected</h3><p>Pick a post to start building a gallery.</p>";
+    empty.innerHTML = "<h3>No posts selected</h3>";
     elements.gallery.appendChild(empty);
     return;
   }
@@ -781,7 +819,7 @@ function handleTimelineAction(action, index) {
 }
 
 function setupEventListeners() {
-  setupSplitter();
+  setupSplitters();
   elements.artistSearch.addEventListener(
     "input",
     debounce((event) => {

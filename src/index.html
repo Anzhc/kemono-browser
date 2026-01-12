@@ -37,7 +37,30 @@
           </section>
         </section>
 
+        <div class="splitter" id="splitterArtistsGallery" aria-label="Resize gallery"></div>
+
         <section class="panel panel--middle">
+          <div class="panel__header panel__header--tight">
+            <div class="panel__header-row panel__header-row--space">
+              <h2>Gallery</h2>
+              <button class="ghost" id="clearGallery">Clear gallery</button>
+            </div>
+          </div>
+
+          <div class="gallery" id="gallery">
+            <div class="empty-state">
+              <h3>No posts selected</h3>
+            </div>
+          </div>
+
+          <div class="timeline" id="timeline">
+            <div class="timeline__empty">Timeline is empty.</div>
+          </div>
+        </section>
+
+        <div class="splitter" id="splitterGalleryPosts" aria-label="Resize post library"></div>
+
+        <section class="panel panel--right">
           <section class="panel__view" id="postsView">
             <div class="panel__header">
               <div class="panel__header-row panel__header-row--space">
@@ -68,28 +91,6 @@
 
             <div class="list" id="postsList"></div>
           </section>
-        </section>
-
-        <div class="splitter" id="splitter" aria-label="Resize gallery"></div>
-
-        <section class="panel panel--right">
-          <div class="panel__header panel__header--tight">
-            <div class="panel__header-row panel__header-row--space">
-              <h2>Gallery</h2>
-              <button class="ghost" id="clearGallery">Clear gallery</button>
-            </div>
-          </div>
-
-          <div class="gallery" id="gallery">
-            <div class="empty-state">
-              <h3>No posts selected</h3>
-              <p>Pick an artist, then click a post to start building a gallery.</p>
-            </div>
-          </div>
-
-          <div class="timeline" id="timeline">
-            <div class="timeline__empty">Timeline is empty.</div>
-          </div>
         </section>
       </main>
     </div>

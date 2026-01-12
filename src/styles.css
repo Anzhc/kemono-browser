@@ -15,7 +15,7 @@
   --shadow-soft: 0 10px 22px rgba(6, 10, 10, 0.35);
   --radius: 8px;
   --radius-sm: 6px;
-  --gap: 12px;
+  --gap: 8px;
 }
 
 * {
@@ -114,7 +114,7 @@ button.ghost:hover {
 .workspace {
   flex: 1;
   display: grid;
-  grid-template-columns: minmax(280px, 360px) minmax(260px, var(--posts-width, 420px)) 8px minmax(280px, 1fr);
+  grid-template-columns: minmax(240px, var(--artists-width, 30%)) 8px minmax(320px, var(--gallery-width, 40%)) 8px minmax(240px, 30%);
   gap: var(--gap);
   padding: 10px 12px 12px;
   min-height: 0;
@@ -243,6 +243,12 @@ button.ghost:hover {
 }
 
 #postsList {
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  grid-auto-rows: max-content;
+  align-content: start;
+}
+
+#artistsList {
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   grid-auto-rows: max-content;
   align-content: start;
@@ -513,7 +519,7 @@ button.ghost:hover {
 }
 .splitter {
   width: 8px;
-  border-radius: 999px;
+  border-radius: 4px;
   background: linear-gradient(180deg, rgba(42, 209, 201, 0.15), rgba(42, 209, 201, 0.4));
   cursor: col-resize;
   align-self: stretch;
