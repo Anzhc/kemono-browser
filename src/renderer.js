@@ -809,7 +809,13 @@ function renderGallerySideTimeline(items) {
     } else {
       const label = document.createElement("div");
       label.className = "gallery-side__label";
-      label.textContent = item.type === "video" ? "VID" : "FILE";
+      if (item.type === "video") {
+        label.textContent = "VID";
+      } else if (item.type === "file") {
+        label.textContent = (item.fileType || "file").toUpperCase();
+      } else {
+        label.textContent = "FILE";
+      }
       button.appendChild(label);
     }
     button.addEventListener("click", () => {
@@ -1193,8 +1199,10 @@ function renderGallery() {
 
     if (entry.files.length > 0) {
       entry.files.forEach((item) => {
+        const fileId = `gallery-file-${entry.key}-${timelineItems.length}`;
         const file = document.createElement("div");
         file.className = "gallery-file";
+        file.id = fileId;
         const label = document.createElement("span");
         label.textContent = item.name || "File";
         const actions = document.createElement("div");
@@ -1243,6 +1251,13 @@ function renderGallery() {
         file.appendChild(label);
         file.appendChild(actions);
         mediaWrap.appendChild(file);
+
+        const fileType = isPdf ? "pdf" : isZip ? "zip" : "file";
+        timelineItems.push({
+          id: fileId,
+          type: "file",
+          fileType,
+        });
       });
     }
 
