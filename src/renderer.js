@@ -35,6 +35,7 @@ const state = {
 const gifPreviewCache = new Map();
 const downloadedImages = new Set();
 const memoryMedia = new Map();
+const zipProgress = new Map();
 
 const elements = {
   statusMessage: document.getElementById("statusMessage"),
@@ -71,6 +72,13 @@ function setStatus(message, tone = "info") {
 
 function formatNumber(value) {
   return new Intl.NumberFormat().format(value);
+}
+
+function formatMb(value) {
+  if (!Number.isFinite(value)) {
+    return "0.0";
+  }
+  return (value / (1024 * 1024)).toFixed(1);
 }
 
 function formatDate(value) {
@@ -601,6 +609,75 @@ function registerGalleryImage(img, src, options = {}) {
   });
 }
 
+function attachZipProgress(host, requestId) {
+  if (!host) {
+    return null;
+  }
+  const existing = host.querySelector(".zip-progress");
+  if (existing) {
+    existing.remove();
+  }
+  const wrap = document.createElement("div");
+  wrap.className = "zip-progress";
+  wrap.dataset.requestId = requestId;
+  const bar = document.createElement("div");
+  bar.className = "zip-progress__bar";
+  const fill = document.createElement("div");
+  fill.className = "zip-progress__fill";
+  bar.appendChild(fill);
+  const meta = document.createElement("div");
+  meta.className = "zip-progress__meta";
+  meta.textContent = "Starting download...";
+  wrap.appendChild(bar);
+  wrap.appendChild(meta);
+  host.appendChild(wrap);
+  const entry = { wrap, bar, fill, meta };
+  zipProgress.set(requestId, entry);
+  return entry;
+}
+
+function updateZipProgress(data) {
+  if (!data || !data.requestId) {
+    return;
+  }
+  const entry = zipProgress.get(data.requestId);
+  if (!entry) {
+    return;
+  }
+  if (!entry.wrap.isConnected) {
+    zipProgress.delete(data.requestId);
+    return;
+  }
+  if (data.error) {
+    entry.bar.classList.remove("is-indeterminate");
+    entry.fill.style.width = "0%";
+    entry.meta.textContent = `Failed: ${data.error}`;
+    return;
+  }
+  const total = Number(data.total) || 0;
+  const loaded = Number(data.loaded) || 0;
+  const speed = Number(data.speed) || 0;
+  const speedText = `${formatMb(speed)} MB/s`;
+  if (total > 0) {
+    const percent = Math.min(100, (loaded / total) * 100);
+    entry.bar.classList.remove("is-indeterminate");
+    entry.fill.style.width = `${percent}%`;
+    const remaining = Math.max(0, total - loaded);
+    entry.meta.textContent = `${formatMb(loaded)}/${formatMb(
+      total
+    )} MB · ${speedText} · ${formatMb(remaining)} MB left`;
+  } else {
+    entry.bar.classList.add("is-indeterminate");
+    entry.fill.style.width = "40%";
+    entry.meta.textContent = `${formatMb(loaded)} MB · ${speedText}`;
+  }
+  if (data.done) {
+    entry.bar.classList.remove("is-indeterminate");
+    entry.fill.style.width = "100%";
+    entry.meta.textContent = "Extracting...";
+  }
+}
+
 function clearMemoryMedia() {
   memoryMedia.forEach((_entry, url) => {
     URL.revokeObjectURL(url);
@@ -722,10 +799,17 @@ function renderGallerySideTimeline(items) {
   });
 }
 
-async function previewZipInGallery(url, label) {
+async function previewZipInGallery(url, label, host, button) {
+  const requestId = `zip-${Date.now()}-${Math.random()
+    .toString(36)
+    .slice(2)}`;
+  const progress = attachZipProgress(host, requestId);
+  if (button) {
+    button.disabled = true;
+  }
   setStatus("Loading zip...", "info");
   try {
-    const images = await window.kemono.extractZipImages(url);
+    const images = await window.kemono.extractZipImages(url, requestId);
     if (!images || images.length === 0) {
       setStatus("No images found in zip.", "info");
       return;
@@ -761,6 +845,14 @@ async function previewZipInGallery(url, label) {
     setStatus(`Added ${media.length} images from zip.`, "info");
   } catch (error) {
     setStatus(`Zip preview failed: ${error.message}`, "error");
+  } finally {
+    if (progress) {
+      progress.wrap.remove();
+      zipProgress.delete(requestId);
+    }
+    if (button) {
+      button.disabled = false;
+    }
   }
 }
 
@@ -992,7 +1084,12 @@ function renderGallery() {
           preview.className = "ghost";
           preview.textContent = "Preview";
           preview.addEventListener("click", async () => {
-            await previewZipInGallery(item.url, item.name || "Archive");
+            await previewZipInGallery(
+              item.url,
+              item.name || "Archive",
+              file,
+              preview
+            );
           });
           actions.appendChild(preview);
         }
@@ -1263,6 +1360,11 @@ function setupEventListeners() {
 async function init() {
   setStatus("Loading creators...", "info");
   setupEventListeners();
+  if (window.kemono.onZipProgress) {
+    window.kemono.onZipProgress((data) => {
+      updateZipProgress(data);
+    });
+  }
   setPostsEnabled(false);
   showPostsPlaceholder("Select an artist to load posts.");
   elements.artistTitle.textContent = "";

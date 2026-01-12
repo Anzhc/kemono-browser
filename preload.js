@@ -18,5 +18,13 @@ contextBridge.exposeInMainWorld("kemono", {
     ipcRenderer.invoke("app:downloadImage", { url, folder }),
   saveBytes: (bytes, filename, folder) =>
     ipcRenderer.invoke("app:saveBytes", { bytes, filename, folder }),
-  extractZipImages: (url) => ipcRenderer.invoke("app:extractZipImages", { url }),
+  extractZipImages: (url, requestId) =>
+    ipcRenderer.invoke("app:extractZipImages", { url, requestId }),
+  onZipProgress: (handler) => {
+    const listener = (_event, data) => handler(data);
+    ipcRenderer.on("app:zipProgress", listener);
+    return () => {
+      ipcRenderer.removeListener("app:zipProgress", listener);
+    };
+  },
 });

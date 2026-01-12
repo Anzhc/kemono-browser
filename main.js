@@ -210,13 +210,84 @@ app.whenReady().then(() => {
     return candidate;
   });
 
-  ipcMain.handle("app:extractZipImages", async (_event, { url }) => {
+  ipcMain.handle("app:extractZipImages", async (event, payload) => {
+    const { url, requestId } = payload || {};
+    if (!url) {
+      throw new Error("Zip URL is required.");
+    }
     const response = await fetch(url);
     if (!response.ok) {
       const text = await response.text();
       throw new Error(`Zip fetch failed ${response.status}: ${text}`);
     }
-    const buffer = Buffer.from(await response.arrayBuffer());
+
+    const total = Number(response.headers.get("content-length")) || 0;
+    const chunks = [];
+    let loaded = 0;
+    const started = Date.now();
+    let lastSent = 0;
+
+    const sendProgress = (done = false, force = false) => {
+      if (!requestId) {
+        return;
+      }
+      const now = Date.now();
+      if (!force && !done && now - lastSent < 200) {
+        return;
+      }
+      lastSent = now;
+      const elapsed = Math.max(0.001, (now - started) / 1000);
+      const speed = loaded / elapsed;
+      event.sender.send("app:zipProgress", {
+        requestId,
+        loaded,
+        total,
+        speed,
+        done,
+      });
+    };
+
+    try {
+      const body = response.body;
+      sendProgress(false, true);
+      if (body && typeof body.getReader === "function") {
+        const reader = body.getReader();
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) {
+            break;
+          }
+          if (value) {
+            const chunk = Buffer.from(value);
+            chunks.push(chunk);
+            loaded += chunk.length;
+            sendProgress(false);
+          }
+        }
+      } else if (body && body[Symbol.asyncIterator]) {
+        for await (const chunk of body) {
+          const buffer = Buffer.from(chunk);
+          chunks.push(buffer);
+          loaded += buffer.length;
+          sendProgress(false);
+        }
+      } else {
+        const buffer = Buffer.from(await response.arrayBuffer());
+        chunks.push(buffer);
+        loaded = buffer.length;
+      }
+      sendProgress(true, true);
+    } catch (error) {
+      if (requestId) {
+        event.sender.send("app:zipProgress", {
+          requestId,
+          error: error.message,
+        });
+      }
+      throw error;
+    }
+
+    const buffer = Buffer.concat(chunks);
     const zip = await JSZip.loadAsync(buffer);
     const results = [];
     const entries = Object.values(zip.files);
