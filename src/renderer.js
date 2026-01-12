@@ -1125,6 +1125,9 @@ function renderGallerySideTimeline(items) {
     return;
   }
   elements.gallerySideTimeline.innerHTML = "";
+  if (elements.gallerySideTimeline) {
+    elements.gallerySideTimeline.dataset.sync = "1";
+  }
   if (items.length === 0) {
     return;
   }
@@ -1168,6 +1171,70 @@ function renderGallerySideTimeline(items) {
       }
     });
     elements.gallerySideTimeline.appendChild(button);
+  });
+}
+
+function updateSideTimelineActive(targetId) {
+  if (!elements.gallerySideTimeline) {
+    return;
+  }
+  const buttons = elements.gallerySideTimeline.querySelectorAll(
+    ".gallery-side__item"
+  );
+  let active = null;
+  buttons.forEach((button) => {
+    const isMatch = button.dataset.targetId === targetId;
+    button.classList.toggle("is-active", isMatch);
+    if (isMatch) {
+      active = button;
+    }
+  });
+  if (!active) {
+    return;
+  }
+  const container = elements.gallerySideTimeline;
+  const containerRect = container.getBoundingClientRect();
+  const activeRect = active.getBoundingClientRect();
+  if (
+    activeRect.top < containerRect.top ||
+    activeRect.bottom > containerRect.bottom
+  ) {
+    active.scrollIntoView({ block: "nearest" });
+  }
+}
+
+function syncSideTimelineToScroll() {
+  if (!elements.gallerySideTimeline || !state.galleryTimelineVisible) {
+    return;
+  }
+  const galleryRect = elements.gallery.getBoundingClientRect();
+  const targets = elements.gallery.querySelectorAll(
+    ".gallery-media-item, .gallery-file"
+  );
+  let best = null;
+  let bestDelta = Infinity;
+  targets.forEach((node) => {
+    const rect = node.getBoundingClientRect();
+    const delta = Math.abs(rect.top - galleryRect.top);
+    if (delta < bestDelta) {
+      bestDelta = delta;
+      best = node;
+    }
+  });
+  if (!best || !best.id) {
+    return;
+  }
+  updateSideTimelineActive(best.id);
+}
+
+let sideTimelineRaf = 0;
+function scheduleSideTimelineSync() {
+  if (sideTimelineRaf) {
+    return;
+  }
+  sideTimelineRaf = requestAnimationFrame(() => {
+    sideTimelineRaf = 0;
+    syncSideTimelineToScroll();
   });
 }
 
@@ -1616,11 +1683,11 @@ function renderGallery() {
 
     entry.media.forEach((item) => {
       if (item.type === "image") {
-        const mediaId = `gallery-media-${entry.key}-${timelineItems.length}`;
-        const fullUrl = item.url;
-        const mediaItem = document.createElement("div");
-        mediaItem.className = "gallery-media-item";
-        mediaItem.id = mediaId;
+    const mediaId = `gallery-media-${entry.key}-${timelineItems.length}`;
+    const fullUrl = item.url;
+    const mediaItem = document.createElement("div");
+    mediaItem.className = "gallery-media-item";
+    mediaItem.id = mediaId;
         const img = document.createElement("img");
         registerGalleryImage(img, item.url, {
           memKey: item.memoryKey || "",
@@ -1723,6 +1790,7 @@ function renderGallery() {
   });
 
   renderGallerySideTimeline(timelineItems);
+  syncSideTimelineToScroll();
 }
 
 function renderTimeline() {
@@ -1991,6 +2059,10 @@ function setupEventListeners() {
     state.galleryPosts = [];
     renderGallery();
     renderTimeline();
+  });
+
+  elements.gallery.addEventListener("scroll", () => {
+    scheduleSideTimelineSync();
   });
 
   elements.gallery.addEventListener("contextmenu", async (event) => {

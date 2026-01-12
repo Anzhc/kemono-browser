@@ -629,6 +629,15 @@ button.ghost:hover {
   outline-offset: -1px;
 }
 
+.gallery-side__item.is-active img {
+  box-shadow: 0 0 0 2px rgba(82, 190, 255, 0.45);
+}
+
+.gallery-side__item.is-active .gallery-side__label {
+  box-shadow: 0 0 0 2px rgba(82, 190, 255, 0.45);
+  color: #7fc6ff;
+}
+
 .gallery-side__label {
   display: grid;
   place-items: center;
