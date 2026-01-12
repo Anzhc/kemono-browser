@@ -29,6 +29,8 @@ const state = {
   galleryPosts: [],
 };
 
+const gifPreviewCache = new Map();
+
 const elements = {
   statusMessage: document.getElementById("statusMessage"),
   artistSearch: document.getElementById("artistSearch"),
@@ -139,29 +141,58 @@ function buildMediaUrl(path) {
 
 async function setStaticGifPreview(img, path) {
   try {
-    const bytes = await window.kemono.getMediaBytes(path);
-    const blob = new Blob([bytes], { type: "image/gif" });
-    const bitmap = await createImageBitmap(blob);
-    const canvas = document.createElement("canvas");
-    canvas.width = bitmap.width;
-    canvas.height = bitmap.height;
-    const context = canvas.getContext("2d");
-    if (context) {
-      context.drawImage(bitmap, 0, 0);
-      img.src = canvas.toDataURL("image/png");
+    const dataUrl = await getGifPreviewDataUrl(path);
+    if (dataUrl) {
+      img.src = dataUrl;
     } else {
       img.src = buildMediaUrl(path);
     }
-    if (typeof bitmap.close === "function") {
-      bitmap.close();
-    }
   } catch (error) {
-    img.remove();
-    const label = document.createElement("div");
-    label.className = "post-card__thumb-label";
-    label.textContent = "GIF preview unavailable";
-    img.parentElement?.appendChild(label);
+    const parent = img.parentElement;
+    if (parent && parent.classList.contains("post-card__thumb")) {
+      img.remove();
+      const label = document.createElement("div");
+      label.className = "post-card__thumb-label";
+      label.textContent = "GIF preview unavailable";
+      parent.appendChild(label);
+    } else {
+      img.src = buildMediaUrl(path);
+    }
   }
+}
+
+async function getGifPreviewDataUrl(path) {
+  if (gifPreviewCache.has(path)) {
+    return gifPreviewCache.get(path);
+  }
+  const promise = (async () => {
+    try {
+      const bytes = await window.kemono.getMediaBytes(path);
+      const blob = new Blob([bytes], { type: "image/gif" });
+      const bitmap = await createImageBitmap(blob);
+      const canvas = document.createElement("canvas");
+      canvas.width = bitmap.width;
+      canvas.height = bitmap.height;
+      const context = canvas.getContext("2d");
+      if (context) {
+        context.drawImage(bitmap, 0, 0);
+        if (typeof bitmap.close === "function") {
+          bitmap.close();
+        }
+        return canvas.toDataURL("image/png");
+      }
+      if (typeof bitmap.close === "function") {
+        bitmap.close();
+      }
+      return "";
+    } catch (error) {
+      return "";
+    }
+  })();
+  gifPreviewCache.set(path, promise);
+  const result = await promise;
+  gifPreviewCache.set(path, result);
+  return result;
 }
 
 function applyArtistFilter() {
@@ -343,7 +374,8 @@ function renderPosts() {
     if (thumbData && thumbData.type === "image") {
       const img = document.createElement("img");
       img.alt = post.title || "Post image";
-      img.loading = "lazy";
+      img.decoding = "async";
+      img.fetchPriority = "low";
       thumb.appendChild(img);
       if (thumbData.isGif) {
         setStaticGifPreview(img, thumbData.path);
@@ -492,6 +524,7 @@ function buildMediaCollection(post) {
       url,
       type,
       path,
+      isGif: isGifPath(path),
     };
     if (type === "image" || type === "video") {
       media.push(payload);
@@ -513,6 +546,18 @@ function setupSplitter() {
 
   let dragging = false;
 
+  const stopDrag = () => {
+    if (!dragging) {
+      return;
+    }
+    dragging = false;
+    elements.splitter.classList.remove("is-dragging");
+    document.body.style.cursor = "";
+    document.body.style.userSelect = "";
+    window.removeEventListener("mousemove", onMove);
+    window.removeEventListener("mouseup", stopDrag);
+  };
+
   const onMove = (event) => {
     if (!dragging) {
       return;
@@ -528,18 +573,6 @@ function setupSplitter() {
     workspace.style.setProperty("--posts-width", `${next}px`);
   };
 
-  const stopDrag = () => {
-    if (!dragging) {
-      return;
-    }
-    dragging = false;
-    elements.splitter.classList.remove("is-dragging");
-    document.body.style.cursor = "";
-    document.body.style.userSelect = "";
-    window.removeEventListener("mousemove", onMove);
-    window.removeEventListener("mouseup", stopDrag);
-  };
-
   elements.splitter.addEventListener("mousedown", (event) => {
     dragging = true;
     elements.splitter.classList.add("is-dragging");
@@ -548,6 +581,13 @@ function setupSplitter() {
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", stopDrag);
     event.preventDefault();
+  });
+
+  window.addEventListener("blur", stopDrag);
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) {
+      stopDrag();
+    }
   });
 }
 
@@ -623,7 +663,7 @@ function renderGallery() {
         const img = document.createElement("img");
         img.src = item.url;
         img.alt = item.name || entry.title;
-        img.loading = "lazy";
+        img.decoding = "async";
         mediaWrap.appendChild(img);
       } else if (item.type === "video") {
         const video = document.createElement("video");
@@ -655,6 +695,7 @@ function renderGallery() {
     section.appendChild(mediaWrap);
     elements.gallery.appendChild(section);
   });
+
 }
 
 function renderTimeline() {
@@ -850,6 +891,8 @@ async function init() {
   setupEventListeners();
   setPostsEnabled(false);
   showPostsPlaceholder("Select an artist to load posts.");
+  elements.artistTitle.textContent = "";
+  elements.artistSubtitle.textContent = "";
 
   try {
     state.dataBase = await window.kemono.getDataBase();

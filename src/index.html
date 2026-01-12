@@ -8,26 +8,11 @@
   </head>
   <body>
     <div class="app-shell">
-      <header class="topbar">
-        <div class="brand">
-          <div class="brand__mark">KB</div>
-          <div class="brand__text">
-            <span>Kemono Browser</span>
-            <small>Custom artist + post explorer</small>
-          </div>
-        </div>
-        <div class="topbar__status" id="statusMessage">Connecting...</div>
-        <div class="topbar__actions">
-          <button class="ghost" id="clearGallery">Clear gallery</button>
-        </div>
-      </header>
-
       <main class="workspace">
         <section class="panel panel--left">
           <section class="panel__view" id="artistsView">
             <div class="panel__header">
               <h2>Artist search</h2>
-              <p>Browse by name or ID. Results are ranked by favorites.</p>
             </div>
 
             <div class="search-row">
@@ -55,13 +40,14 @@
         <section class="panel panel--middle">
           <section class="panel__view" id="postsView">
             <div class="panel__header">
-              <div class="panel__header-row">
-                <div class="artist-meta">
-                  <h2 id="artistTitle">Pick an artist</h2>
-                  <span id="artistSubtitle">Results will load here.</span>
-                </div>
+              <div class="panel__header-row panel__header-row--space">
+                <h2>Post Library</h2>
+                <div class="panel__status" id="statusMessage">Connecting...</div>
               </div>
-              <p>Search inside posts and open them in the gallery.</p>
+              <div class="artist-meta">
+                <span id="artistTitle"></span>
+                <span id="artistSubtitle"></span>
+              </div>
             </div>
 
             <div class="search-row">
@@ -88,8 +74,9 @@
 
         <section class="panel panel--right">
           <div class="panel__header panel__header--tight">
-            <div>
+            <div class="panel__header-row panel__header-row--space">
               <h2>Gallery</h2>
+              <button class="ghost" id="clearGallery">Clear gallery</button>
             </div>
           </div>
 

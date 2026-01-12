@@ -53,64 +53,20 @@ body::before {
   flex-direction: column;
 }
 
-.topbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 8px 12px;
-  border-bottom: 1px solid rgba(42, 209, 201, 0.12);
-  background: rgba(14, 20, 19, 0.92);
-  backdrop-filter: blur(12px);
-}
-
-.brand {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-}
-
-.brand__mark {
-  width: 44px;
-  height: 44px;
-  border-radius: 6px;
-  background: linear-gradient(135deg, var(--accent), #147a74);
-  color: #0a1412;
-  display: grid;
-  place-items: center;
-  font-family: "Space Grotesk", sans-serif;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-}
-
-.brand__text span {
-  display: block;
-  font-family: "Space Grotesk", sans-serif;
-  font-weight: 600;
-}
-
-.brand__text small {
+.panel__status {
+  font-size: 0.9rem;
   color: var(--muted);
-}
-
-.topbar__status {
-  font-size: 0.95rem;
-  color: var(--muted);
-  padding: 4px 10px;
+  padding: 4px 8px;
   border-radius: 6px;
   background: var(--panel-2);
   border: 1px solid var(--border);
+  white-space: nowrap;
 }
 
-.topbar__status[data-tone="error"] {
+.panel__status[data-tone="error"] {
   color: #ffb29c;
   background: #2a1310;
   border-color: #5b2a24;
-}
-
-.topbar__actions {
-  display: flex;
-  align-items: center;
-  gap: 12px;
 }
 
 button,
@@ -236,8 +192,8 @@ button.ghost:hover {
   gap: 12px;
 }
 
-.artist-meta h2 {
-  margin: 0;
+.panel__header-row--space {
+  justify-content: space-between;
 }
 
 .artist-meta span {
@@ -283,6 +239,7 @@ button.ghost:hover {
   gap: 12px;
   min-height: 0;
   flex: 1 1 auto;
+  align-content: start;
 }
 
 #postsList {
@@ -303,14 +260,11 @@ button.ghost:hover {
   display: grid;
   gap: 8px;
   cursor: pointer;
-  transition: transform 0.2s ease, border 0.2s ease, box-shadow 0.2s ease;
-  animation: fadeUp 0.4s ease;
+  transition: none;
 }
 
 .card:hover {
-  transform: translateY(-2px);
   border-color: rgba(42, 209, 201, 0.45);
-  box-shadow: var(--shadow-soft);
 }
 
 .card__title {
@@ -519,17 +473,6 @@ button.ghost:hover {
   border-radius: 6px;
   padding: 4px 8px;
   font-size: 0.8rem;
-}
-
-@keyframes fadeUp {
-  from {
-    opacity: 0;
-    transform: translateY(6px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
 }
 
 @media (max-width: 1100px) {
