@@ -665,7 +665,11 @@ function renderGallerySideTimeline(items) {
       img.alt = item.alt || "Preview";
       img.decoding = "async";
       img.fetchPriority = "low";
+      const fullUrl = item.fullUrl || buildMediaUrl(item.path);
       img.src = buildThumbUrl(item.path);
+      if (downloadedImages.has(fullUrl)) {
+        img.classList.add("is-downloaded");
+      }
       img.onerror = () => {
         img.onerror = null;
         img.src = buildMediaUrl(item.path);
@@ -853,6 +857,7 @@ function renderGallery() {
     entry.media.forEach((item) => {
       if (item.type === "image") {
         const mediaId = `gallery-media-${entry.key}-${timelineItems.length}`;
+        const fullUrl = item.url;
         const mediaItem = document.createElement("div");
         mediaItem.className = "gallery-media-item";
         mediaItem.id = mediaId;
@@ -871,6 +876,7 @@ function renderGallery() {
           type: "image",
           path: item.path,
           alt: item.name || entry.title,
+          fullUrl,
         });
       } else if (item.type === "video") {
         const mediaItem = document.createElement("div");
@@ -1124,6 +1130,22 @@ function setupEventListeners() {
       const saved = await window.kemono.downloadImage(img.dataset.src, folder);
       img.classList.add("is-downloaded");
       downloadedImages.add(img.dataset.src);
+      if (elements.gallerySideTimeline) {
+        elements.gallerySideTimeline
+          .querySelectorAll("img")
+          .forEach((thumb) => {
+            const parent = thumb.closest(".gallery-side__item");
+            if (!parent) {
+              return;
+            }
+            const targetId = parent.dataset.targetId;
+            const target = targetId ? document.getElementById(targetId) : null;
+            const targetImg = target?.querySelector("img");
+            if (targetImg && targetImg.dataset.src === img.dataset.src) {
+              thumb.classList.add("is-downloaded");
+            }
+          });
+      }
       setStatus(`Saved to ${saved}`, "info");
     } catch (error) {
       setStatus(`Download failed: ${error.message}`, "error");
