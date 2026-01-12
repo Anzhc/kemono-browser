@@ -20,6 +20,8 @@ const state = {
   serviceFilter: "all",
   artistsPage: 0,
   filteredArtists: [],
+  favoriteArtists: new Set(),
+  artistView: "search",
   selectedArtist: null,
   artistProfile: null,
   posts: [],
@@ -45,6 +47,8 @@ const elements = {
   artistsNext: document.getElementById("artistsNext"),
   artistsPageInfo: document.getElementById("artistsPageInfo"),
   artistsList: document.getElementById("artistsList"),
+  artistTabSearch: document.getElementById("artistTabSearch"),
+  artistTabFavorites: document.getElementById("artistTabFavorites"),
   artistTitle: document.getElementById("artistTitle"),
   artistSubtitle: document.getElementById("artistSubtitle"),
   postSearch: document.getElementById("postSearch"),
@@ -105,6 +109,36 @@ function capitalize(value) {
     return "";
   }
   return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
+function getArtistKey(artist) {
+  return `${artist.service}:${artist.id}`;
+}
+
+function isArtistFavorite(artist) {
+  return state.favoriteArtists.has(getArtistKey(artist));
+}
+
+async function persistFavorites() {
+  if (!window.kemono.saveFavorites) {
+    return;
+  }
+  try {
+    await window.kemono.saveFavorites([...state.favoriteArtists]);
+  } catch (error) {
+    setStatus(`Failed to save favorites: ${error.message}`, "error");
+  }
+}
+
+function setArtistView(view) {
+  state.artistView = view;
+  if (elements.artistTabSearch) {
+    elements.artistTabSearch.classList.toggle("is-active", view === "search");
+  }
+  if (elements.artistTabFavorites) {
+    elements.artistTabFavorites.classList.toggle("is-active", view === "favorites");
+  }
+  applyArtistFilter();
 }
 
 function normalizeBytes(bytes) {
@@ -247,7 +281,11 @@ async function getGifPreviewDataUrl(path) {
 function applyArtistFilter() {
   const query = state.artistQuery.trim().toLowerCase();
   const service = state.serviceFilter;
-  state.filteredArtists = state.creatorsSorted.filter((artist) => {
+  const base =
+    state.artistView === "favorites"
+      ? state.creatorsSorted.filter((artist) => isArtistFavorite(artist))
+      : state.creatorsSorted;
+  state.filteredArtists = base.filter((artist) => {
     if (service !== "all" && artist.service !== service) {
       return false;
     }
@@ -292,6 +330,7 @@ function renderArtists() {
     card.dataset.service = artist.service;
     card.dataset.id = artist.id;
     card.dataset.name = artist.name || "Unknown";
+    const favorite = isArtistFavorite(artist);
 
     const banner = document.createElement("div");
     banner.className = "artist-card__bg";
@@ -303,9 +342,35 @@ function renderArtists() {
     const body = document.createElement("div");
     body.className = "artist-card__body";
 
+    const titleRow = document.createElement("div");
+    titleRow.className = "artist-card__title-row";
+
     const title = document.createElement("div");
     title.className = "card__title";
     title.textContent = artist.name || "Unknown";
+
+    const favoriteButton = document.createElement("button");
+    favoriteButton.type = "button";
+    favoriteButton.className = "artist-fav";
+    favoriteButton.dataset.action = "favorite";
+    favoriteButton.setAttribute("aria-pressed", favorite ? "true" : "false");
+    favoriteButton.title = favorite ? "Remove favorite" : "Add favorite";
+    if (favorite) {
+      favoriteButton.classList.add("is-active");
+    }
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("viewBox", "0 0 24 24");
+    svg.setAttribute("aria-hidden", "true");
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    path.setAttribute(
+      "d",
+      "M12 2l2.9 6.9 7.1.6-5.3 4.7 1.6 7-6.3-3.8-6.3 3.8 1.6-7L2 9.5l7.1-.6L12 2z"
+    );
+    svg.appendChild(path);
+    favoriteButton.appendChild(svg);
+
+    titleRow.appendChild(title);
+    titleRow.appendChild(favoriteButton);
 
     const meta = document.createElement("div");
     meta.className = "card__meta";
@@ -319,7 +384,7 @@ function renderArtists() {
       artist.updated ? artist.updated * 1000 : null
     )}`;
 
-    body.appendChild(title);
+    body.appendChild(titleRow);
     body.appendChild(meta);
     body.appendChild(updated);
 
@@ -1349,6 +1414,18 @@ function setupEventListeners() {
     }, 250)
   );
 
+  if (elements.artistTabSearch) {
+    elements.artistTabSearch.addEventListener("click", () => {
+      setArtistView("search");
+    });
+  }
+
+  if (elements.artistTabFavorites) {
+    elements.artistTabFavorites.addEventListener("click", () => {
+      setArtistView("favorites");
+    });
+  }
+
   elements.serviceFilter.addEventListener("change", (event) => {
     state.serviceFilter = event.target.value;
     applyArtistFilter();
@@ -1367,6 +1444,19 @@ function setupEventListeners() {
   elements.artistsList.addEventListener("click", (event) => {
     const card = event.target.closest(".artist-card");
     if (!card) {
+      return;
+    }
+    const favButton = event.target.closest("button[data-action='favorite']");
+    if (favButton) {
+      const key = `${card.dataset.service}:${card.dataset.id}`;
+      if (state.favoriteArtists.has(key)) {
+        state.favoriteArtists.delete(key);
+      } else {
+        state.favoriteArtists.add(key);
+      }
+      persistFavorites();
+      applyArtistFilter();
+      event.stopPropagation();
       return;
     }
     selectArtist({
@@ -1542,6 +1632,10 @@ async function init() {
   updateGalleryTimelineVisibility();
 
   try {
+    if (window.kemono.getFavorites) {
+      const saved = await window.kemono.getFavorites();
+      state.favoriteArtists = new Set(Array.isArray(saved) ? saved : []);
+    }
     state.dataBase = await window.kemono.getDataBase();
     state.thumbBase = await window.kemono.getThumbBase();
     state.outputFolder = (await window.kemono.getOutputFolder()) || "";
@@ -1560,8 +1654,7 @@ async function init() {
       elements.serviceFilter.appendChild(option);
     });
 
-    state.filteredArtists = state.creatorsSorted;
-    renderArtists();
+    applyArtistFilter();
     setStatus("Ready.", "info");
   } catch (error) {
     setStatus(`Failed to load creators: ${error.message}`, "error");

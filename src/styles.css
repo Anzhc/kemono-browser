@@ -233,6 +233,21 @@ button.ghost:hover {
   gap: 6px;
 }
 
+.panel__tabs {
+  display: inline-flex;
+  gap: 6px;
+}
+
+.panel__tab {
+  padding: 4px 10px;
+}
+
+.panel__tab.is-active {
+  background: var(--accent);
+  color: #031312;
+  border-color: var(--accent);
+}
+
 .artist-meta span {
   color: var(--muted);
   font-size: 0.9rem;
@@ -341,6 +356,55 @@ button.ghost:hover {
   z-index: 1;
   display: grid;
   gap: 4px;
+}
+
+.artist-card__title-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.artist-card__title-row .card__title {
+  flex: 1;
+  min-width: 0;
+}
+
+.artist-fav {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  padding: 0;
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  transform: none;
+  box-shadow: none;
+}
+
+.artist-fav svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+}
+
+.artist-fav.is-active {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.artist-fav.is-active svg {
+  fill: currentColor;
+}
+
+.artist-fav:hover {
+  transform: none;
+  box-shadow: none;
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 .artist-card__avatar {

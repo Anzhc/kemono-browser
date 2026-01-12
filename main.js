@@ -18,6 +18,35 @@ const IMAGE_EXTENSIONS = new Set([
   "svg",
 ]);
 
+function getFavoritesPath() {
+  return path.join(app.getAppPath(), "data", "favorites.json");
+}
+
+function loadFavorites() {
+  const filePath = getFavoritesPath();
+  if (!fs.existsSync(filePath)) {
+    return [];
+  }
+  try {
+    const raw = fs.readFileSync(filePath, "utf-8");
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (error) {
+    return [];
+  }
+}
+
+function saveFavorites(list) {
+  const filePath = getFavoritesPath();
+  const dir = path.dirname(filePath);
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
+  const payload = Array.isArray(list) ? list : [];
+  fs.writeFileSync(filePath, JSON.stringify(payload, null, 2));
+  return true;
+}
+
 function getUniquePath(folder, baseName) {
   const ext = path.extname(baseName);
   const nameOnly = ext ? baseName.slice(0, -ext.length) : baseName;
@@ -260,6 +289,14 @@ app.whenReady().then(() => {
 
   ipcMain.handle("app:getOutputFolder", async () => {
     return outputFolder || null;
+  });
+
+  ipcMain.handle("app:getFavorites", async () => {
+    return loadFavorites();
+  });
+
+  ipcMain.handle("app:saveFavorites", async (_event, { favorites }) => {
+    return saveFavorites(favorites);
   });
 
   ipcMain.handle("app:downloadImage", async (_event, { url, folder }) => {

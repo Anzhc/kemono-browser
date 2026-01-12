@@ -14,6 +14,9 @@ contextBridge.exposeInMainWorld("kemono", {
   openExternal: (url) => ipcRenderer.invoke("app:openExternal", url),
   selectOutputFolder: () => ipcRenderer.invoke("app:selectOutputFolder"),
   getOutputFolder: () => ipcRenderer.invoke("app:getOutputFolder"),
+  getFavorites: () => ipcRenderer.invoke("app:getFavorites"),
+  saveFavorites: (favorites) =>
+    ipcRenderer.invoke("app:saveFavorites", { favorites }),
   downloadImage: (url, folder) =>
     ipcRenderer.invoke("app:downloadImage", { url, folder }),
   fetchFileBytes: (url, requestId) =>
