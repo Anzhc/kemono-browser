@@ -255,6 +255,20 @@ button.ghost:hover {
   accent-color: var(--accent);
 }
 
+.field {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.field input {
+  width: 70px;
+  padding: 4px 6px;
+  height: 26px;
+}
+
 .panel__tabs {
   display: inline-flex;
   gap: 6px;

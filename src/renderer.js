@@ -31,6 +31,7 @@ const state = {
   postCache: new Map(),
   galleryPosts: [],
   serializePosts: false,
+  postsMinMedia: 0,
   postListItems: new Map(),
   postsRequestId: 0,
   postsAll: [],
@@ -63,6 +64,7 @@ const elements = {
   postsPageInfo: document.getElementById("postsPageInfo"),
   postsList: document.getElementById("postsList"),
   serializePosts: document.getElementById("serializePosts"),
+  minMediaFilter: document.getElementById("minMediaFilter"),
   splitterArtistsGallery: document.getElementById("splitterArtistsGallery"),
   splitterGalleryPosts: document.getElementById("splitterGalleryPosts"),
   galleryShell: document.getElementById("galleryShell"),
@@ -648,13 +650,19 @@ function renderPosts() {
   const isSerialized = state.serializePosts;
   const totalCount = state.artistProfile?.post_count || null;
   const currentPage = Math.floor(state.postsOffset / PAGE_SIZE) + 1;
-  const listItems = isSerialized
+  let listItems = isSerialized
     ? buildSerializedPosts(state.posts)
     : state.posts.map((post) => ({
         type: "post",
         key: buildPostKey(post),
         post,
       }));
+
+  if (state.postsMinMedia > 0) {
+    listItems = listItems.filter(
+      (item) => getPostItemMediaCount(item) > state.postsMinMedia
+    );
+  }
 
   let pageItems = listItems;
   if (isSerialized) {
@@ -763,14 +771,7 @@ function renderPosts() {
         : post.title || "Untitled";
     const count = document.createElement("span");
     count.className = "post-card__count";
-    const totalMedia =
-      item.type === "group"
-        ? item.posts.reduce(
-            (sum, groupPost) => sum + getPostMediaCount(groupPost),
-            0
-          )
-        : getPostMediaCount(post);
-    count.textContent = String(totalMedia);
+    count.textContent = String(getPostItemMediaCount(item));
     footer.appendChild(title);
     footer.appendChild(count);
 
@@ -1416,6 +1417,25 @@ function mergeMediaCollections(posts) {
   return { media, files };
 }
 
+function getPostItemMediaCount(item) {
+  if (!item) {
+    return 0;
+  }
+  if (item.type === "group" && Array.isArray(item.posts)) {
+    return item.posts.reduce(
+      (sum, post) => sum + getPostMediaCount(post),
+      0
+    );
+  }
+  if (item.post) {
+    return getPostMediaCount(item.post);
+  }
+  if (item.type === "post") {
+    return getPostMediaCount(item);
+  }
+  return 0;
+}
+
 async function addPostToGallery(postSummary, { append }) {
   if (!postSummary) {
     return;
@@ -1801,6 +1821,19 @@ function setupEventListeners() {
       state.serializePosts = event.target.checked;
       state.postsOffset = 0;
       loadPosts();
+    });
+  }
+
+  if (elements.minMediaFilter) {
+    elements.minMediaFilter.addEventListener("input", (event) => {
+      const value = Number.parseInt(event.target.value, 10);
+      state.postsMinMedia = Number.isNaN(value) ? 0 : Math.max(0, value);
+      state.postsOffset = 0;
+      if (state.serializePosts) {
+        loadPosts();
+      } else {
+        renderPosts();
+      }
     });
   }
 
