@@ -95,6 +95,10 @@ app.whenReady().then(() => {
     return "https://kemono.cr/data";
   });
 
+  ipcMain.handle("api:getThumbBase", () => {
+    return "https://img.kemono.cr/thumbnail/data";
+  });
+
   ipcMain.handle("api:getMediaBytes", async (_event, { path }) => {
     const base = "https://kemono.cr/data";
     const url = path.startsWith("http") ? path : `${base}${path}`;

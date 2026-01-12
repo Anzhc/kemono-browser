@@ -9,6 +9,7 @@ contextBridge.exposeInMainWorld("kemono", {
   getPost: (service, id, postId) =>
     ipcRenderer.invoke("api:getPost", { service, id, postId }),
   getDataBase: () => ipcRenderer.invoke("api:getDataBase"),
+  getThumbBase: () => ipcRenderer.invoke("api:getThumbBase"),
   getMediaBytes: (path) => ipcRenderer.invoke("api:getMediaBytes", { path }),
   openExternal: (url) => ipcRenderer.invoke("app:openExternal", url),
 });

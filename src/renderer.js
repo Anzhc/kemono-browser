@@ -12,6 +12,7 @@ const VIDEO_EXTS = new Set(["mp4", "webm", "mov", "mkv", "avi"]);
 
 const state = {
   dataBase: "",
+  thumbBase: "",
   creators: [],
   creatorsSorted: [],
   services: [],
@@ -139,13 +140,20 @@ function buildMediaUrl(path) {
   return `${state.dataBase}${path}`;
 }
 
+function buildThumbUrl(path) {
+  if (!path) {
+    return "";
+  }
+  return `${state.thumbBase}${path}`;
+}
+
 async function setStaticGifPreview(img, path) {
   try {
     const dataUrl = await getGifPreviewDataUrl(path);
     if (dataUrl) {
       img.src = dataUrl;
     } else {
-      img.src = buildMediaUrl(path);
+      img.src = buildThumbUrl(path) || buildMediaUrl(path);
     }
   } catch (error) {
     const parent = img.parentElement;
@@ -156,7 +164,7 @@ async function setStaticGifPreview(img, path) {
       label.textContent = "GIF preview unavailable";
       parent.appendChild(label);
     } else {
-      img.src = buildMediaUrl(path);
+      img.src = buildThumbUrl(path) || buildMediaUrl(path);
     }
   }
 }
@@ -380,7 +388,11 @@ function renderPosts() {
       if (thumbData.isGif) {
         setStaticGifPreview(img, thumbData.path);
       } else {
-        img.src = buildMediaUrl(thumbData.path);
+        img.src = buildThumbUrl(thumbData.path);
+        img.onerror = () => {
+          img.onerror = null;
+          img.src = buildMediaUrl(thumbData.path);
+        };
       }
     } else {
       thumb.textContent = thumbData?.type === "video" ? "video" : "file";
@@ -896,6 +908,7 @@ async function init() {
 
   try {
     state.dataBase = await window.kemono.getDataBase();
+    state.thumbBase = await window.kemono.getThumbBase();
     state.creators = await window.kemono.getCreators();
     state.creatorsSorted = [...state.creators].sort(
       (a, b) => (b.favorited || 0) - (a.favorited || 0)

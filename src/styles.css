@@ -264,7 +264,7 @@ button.ghost:hover {
 }
 
 .card:hover {
-  border-color: rgba(42, 209, 201, 0.45);
+  background: #152021;
 }
 
 .card__title {
