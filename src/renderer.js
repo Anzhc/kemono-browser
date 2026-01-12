@@ -44,6 +44,13 @@ const gifPreviewCache = new Map();
 const downloadedImages = new Set();
 const memoryMedia = new Map();
 const downloadProgress = new Map();
+const galleryLoadState = {
+  token: 0,
+  active: 0,
+  queue: [],
+};
+
+const MAX_GALLERY_WORKERS = 10;
 
 const elements = {
   statusMessage: document.getElementById("statusMessage"),
@@ -901,7 +908,7 @@ function buildMediaCollection(post) {
 
 function registerGalleryImage(img, src, options = {}) {
   img.dataset.src = src;
-  img.dataset.loadState = "loading";
+  img.dataset.loadState = "queued";
   if (options.memKey) {
     img.dataset.memKey = options.memKey;
   }
@@ -914,6 +921,60 @@ function registerGalleryImage(img, src, options = {}) {
   img.addEventListener("error", () => {
     img.dataset.loadState = "error";
   });
+}
+
+function resetGalleryLoadQueue() {
+  galleryLoadState.token += 1;
+  galleryLoadState.active = 0;
+  galleryLoadState.queue = [];
+}
+
+function enqueueGalleryImage(img) {
+  if (!img || !img.dataset.src) {
+    return;
+  }
+  if (img.dataset.loadQueued === "true") {
+    return;
+  }
+  img.dataset.loadQueued = "true";
+  img.dataset.loadToken = String(galleryLoadState.token);
+  galleryLoadState.queue.push(img);
+  pumpGalleryQueue();
+}
+
+function pumpGalleryQueue() {
+  while (
+    galleryLoadState.active < MAX_GALLERY_WORKERS &&
+    galleryLoadState.queue.length > 0
+  ) {
+    const img = galleryLoadState.queue.shift();
+    if (!img) {
+      continue;
+    }
+    if (img.dataset.loadToken !== String(galleryLoadState.token)) {
+      continue;
+    }
+    if (img.dataset.loadState === "loaded") {
+      continue;
+    }
+    const src = img.dataset.src;
+    if (!src) {
+      continue;
+    }
+    galleryLoadState.active += 1;
+    img.dataset.loadQueued = "false";
+    img.dataset.loadState = "loading";
+    const token = galleryLoadState.token;
+    const onDone = () => {
+      if (token === galleryLoadState.token) {
+        galleryLoadState.active = Math.max(0, galleryLoadState.active - 1);
+        pumpGalleryQueue();
+      }
+    };
+    img.addEventListener("load", onDone, { once: true });
+    img.addEventListener("error", onDone, { once: true });
+    img.src = src;
+  }
 }
 
 function attachDownloadProgress(host, requestId) {
@@ -1019,11 +1080,9 @@ function refreshFailedGalleryImages() {
     if (!src) {
       return;
     }
-    img.dataset.loadState = "loading";
-    img.src = "";
-    requestAnimationFrame(() => {
-      img.src = src;
-    });
+    img.dataset.loadState = "queued";
+    img.dataset.loadQueued = "false";
+    enqueueGalleryImage(img);
   });
 }
 
@@ -1529,6 +1588,7 @@ function renderGallery() {
   if (elements.gallerySideTimeline) {
     elements.gallerySideTimeline.innerHTML = "";
   }
+  resetGalleryLoadQueue();
   if (state.galleryPosts.length === 0) {
     const empty = document.createElement("div");
     empty.className = "empty-state";
@@ -1566,7 +1626,6 @@ function renderGallery() {
           memKey: item.memoryKey || "",
           filename: item.name || "",
         });
-        img.src = item.url;
         img.alt = item.name || entry.title;
         img.decoding = "async";
         if (downloadedImages.has(item.url)) {
@@ -1574,6 +1633,7 @@ function renderGallery() {
         }
         mediaItem.appendChild(img);
         mediaWrap.appendChild(mediaItem);
+        enqueueGalleryImage(img);
         timelineItems.push({
           id: mediaId,
           type: "image",
