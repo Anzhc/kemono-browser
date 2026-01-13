@@ -752,6 +752,26 @@ button.ghost:hover {
   font-weight: 600;
 }
 
+.gallery-link-group {
+  border: 1px dashed var(--border);
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: var(--muted);
+}
+
+.gallery-link-title {
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.gallery-link-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
 .empty-state {
   margin: auto;
   text-align: center;

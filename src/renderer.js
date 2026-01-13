@@ -33,6 +33,7 @@ const state = {
   serializePosts: false,
   serializeAggressive: false,
   postsMinMedia: 0,
+  allowLinks: false,
   postListItems: new Map(),
   postsRequestId: 0,
   postsAll: [],
@@ -45,6 +46,7 @@ const gifPreviewCache = new Map();
 const downloadedImages = new Set();
 const memoryMedia = new Map();
 const downloadProgress = new Map();
+const linkGroupCache = new Map();
 const galleryLoadState = {
   token: 0,
   active: 0,
@@ -74,6 +76,7 @@ const elements = {
   serializePosts: document.getElementById("serializePosts"),
   serializeAggressive: document.getElementById("serializeAggressive"),
   minMediaFilter: document.getElementById("minMediaFilter"),
+  allowLinks: document.getElementById("allowLinks"),
   splitterArtistsGallery: document.getElementById("splitterArtistsGallery"),
   splitterGalleryPosts: document.getElementById("splitterGalleryPosts"),
   galleryShell: document.getElementById("galleryShell"),
@@ -584,6 +587,7 @@ async function selectArtist(artist) {
 
 function setPostsList(posts) {
   state.posts = posts || [];
+  linkGroupCache.clear();
   state.postsByKey = new Map();
   state.posts.forEach((post) => {
     state.postsByKey.set(buildPostKey(post), post);
@@ -911,6 +915,7 @@ function buildMediaCollection(post) {
   const entries = buildMediaEntries(post);
   const media = [];
   const files = [];
+  const links = extractLinkGroups(post);
   entries.forEach((item) => {
     const path = item.path;
     const url = buildMediaUrl(path);
@@ -928,7 +933,7 @@ function buildMediaCollection(post) {
       files.push(payload);
     }
   });
-  return { media, files };
+  return { media, files, links };
 }
 
 function registerGalleryImage(img, src, options = {}) {
@@ -1537,6 +1542,225 @@ function getPostTimestamp(post) {
   return Number.isNaN(parsed) ? 0 : parsed;
 }
 
+function getPostContentHtml(post) {
+  if (!post) {
+    return "";
+  }
+  const value =
+    post.content_html ||
+    post.content ||
+    post.message ||
+    post.description ||
+    post.text ||
+    post.body ||
+    post.content_text ||
+    post.content_raw ||
+    "";
+  if (typeof value === "string") {
+    return value;
+  }
+  if (value && typeof value === "object") {
+    if (typeof value.content === "string") {
+      return value.content;
+    }
+    if (typeof value.html === "string") {
+      return value.html;
+    }
+  }
+  return "";
+}
+
+function parseTextLinks(text) {
+  if (!text) {
+    return [];
+  }
+  const matches = text.match(/https?:\/\/[^\s<>"')\]]+/gi);
+  if (!matches) {
+    return [];
+  }
+  return matches;
+}
+
+function splitTextParagraphs(input) {
+  const text = String(input || "")
+    .replace(/\r\n/g, "\n")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/p>/gi, "\n\n")
+    .replace(/<[^>]*>/g, "");
+  return text
+    .split(/\n\s*\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
+function getLinkServiceName(url) {
+  if (!url) {
+    return "Link";
+  }
+  let host = "";
+  try {
+    host = new URL(url).hostname.toLowerCase();
+  } catch (error) {
+    return "Link";
+  }
+  const normalized = host.replace(/^www\./, "");
+  const map = {
+    "mega.nz": "Mega",
+    "dropbox.com": "Dropbox",
+    "mediafire.com": "Mediafire",
+    "drive.google.com": "Google Drive",
+    "mail.ru": "Mail.ru",
+    "gofile.io": "Gofile",
+    "pixeldrain.com": "Pixeldrain",
+    "anonfiles.com": "AnonFiles",
+    "zippyshare.com": "Zippyshare",
+    "1fichier.com": "1fichier",
+  };
+  if (map[normalized]) {
+    return map[normalized];
+  }
+  const base = normalized.split(".")[0] || normalized;
+  return base ? base.charAt(0).toUpperCase() + base.slice(1) : "Link";
+}
+
+function extractLinkGroups(post) {
+  const cacheKey = post ? buildPostKey(post) : "";
+  const html = getPostContentHtml(post);
+  if (!html) {
+    return [];
+  }
+  const cached = cacheKey ? linkGroupCache.get(cacheKey) : null;
+  if (cached && cached.length === html.length) {
+    return cached.groups;
+  }
+
+  const parser = new DOMParser();
+  const groups = [];
+  let built = false;
+  if (/<[^>]+>/.test(html)) {
+    const doc = parser.parseFromString(html, "text/html");
+    const anchors = Array.from(doc.querySelectorAll("a[href]"));
+    const grouped = new Map();
+    anchors.forEach((anchor) => {
+      const href = anchor.getAttribute("href");
+      if (!href) {
+        return;
+      }
+      const url = href.trim();
+      if (!url) {
+        return;
+      }
+      const container =
+        anchor.closest("p, li") || anchor.closest("div") || doc.body;
+      if (!grouped.has(container)) {
+        grouped.set(container, new Map());
+      }
+      const bucket = grouped.get(container);
+      bucket.set(url, getLinkServiceName(url));
+    });
+
+    if (grouped.size > 0) {
+      grouped.forEach((bucket, node) => {
+        const title = (node.textContent || "").trim();
+        parseTextLinks(node.textContent || "").forEach((url) => {
+          if (!bucket.has(url)) {
+            bucket.set(url, getLinkServiceName(url));
+          }
+        });
+        const links = Array.from(bucket.entries()).map(([url, label]) => ({
+          url,
+          label,
+        }));
+        if (links.length > 0) {
+          groups.push({
+            title: title || "Links",
+            links,
+          });
+        }
+      });
+      built = groups.length > 0;
+    }
+  }
+
+  if (!built) {
+    const paragraphs = splitTextParagraphs(html);
+    paragraphs.forEach((paragraph) => {
+      const urls = parseTextLinks(paragraph);
+      if (urls.length === 0) {
+        return;
+      }
+      const seen = new Set();
+      const links = urls
+        .filter((url) => {
+          if (seen.has(url)) {
+            return false;
+          }
+          seen.add(url);
+          return true;
+        })
+        .map((url) => ({
+          url,
+          label: getLinkServiceName(url),
+        }));
+      groups.push({
+        title: paragraph || "Links",
+        links,
+      });
+    });
+  }
+
+  if (groups.length === 0) {
+    const urls = parseTextLinks(html);
+    if (urls.length > 0) {
+      const seen = new Set();
+      const links = urls
+        .filter((url) => {
+          if (seen.has(url)) {
+            return false;
+          }
+          seen.add(url);
+          return true;
+        })
+        .map((url) => ({
+          url,
+          label: getLinkServiceName(url),
+        }));
+      groups.push({
+        title: "Links",
+        links,
+      });
+    }
+  }
+
+  if (cacheKey) {
+    linkGroupCache.set(cacheKey, { length: html.length, groups });
+  }
+  return groups;
+}
+
+function mergeLinkGroups(posts) {
+  const groups = [];
+  posts.forEach((post) => {
+    const linkGroups = extractLinkGroups(post);
+    if (linkGroups.length === 0) {
+      return;
+    }
+    const postTitle = (post.title || "").trim();
+    linkGroups.forEach((group) => {
+      const baseTitle = group.title || postTitle || "Links";
+      const title =
+        postTitle && group.title && group.title !== postTitle
+          ? `${postTitle} — ${group.title}`
+          : baseTitle;
+      groups.push({
+        title,
+        links: group.links || [],
+      });
+    });
+  });
+  return groups;
+}
+
 function mergeMediaCollections(posts) {
   const media = [];
   const files = [];
@@ -1565,24 +1789,50 @@ function mergeMediaCollections(posts) {
       files.push(item);
     });
   });
-  return { media, files };
+  const links = mergeLinkGroups(posts);
+  return { media, files, links };
 }
 
 function getPostItemMediaCount(item) {
   if (!item) {
     return 0;
   }
+  let count = 0;
   if (item.type === "group" && Array.isArray(item.posts)) {
-    return item.posts.reduce(
+    count = item.posts.reduce(
       (sum, post) => sum + getPostMediaCount(post),
       0
     );
+    if (state.allowLinks) {
+      count += item.posts.reduce((sum, post) => {
+        const groups = extractLinkGroups(post);
+        return (
+          sum +
+          groups.reduce((inner, group) => inner + (group.links?.length || 0), 0)
+        );
+      }, 0);
+    }
+    return count;
   }
   if (item.post) {
-    return getPostMediaCount(item.post);
+    count = getPostMediaCount(item.post);
+    if (state.allowLinks) {
+      count += extractLinkGroups(item.post).reduce(
+        (sum, group) => sum + (group.links?.length || 0),
+        0
+      );
+    }
+    return count;
   }
   if (item.type === "post") {
-    return getPostMediaCount(item);
+    count = getPostMediaCount(item);
+    if (state.allowLinks) {
+      count += extractLinkGroups(item).reduce(
+        (sum, group) => sum + (group.links?.length || 0),
+        0
+      );
+    }
+    return count;
   }
   return 0;
 }
@@ -1605,17 +1855,18 @@ async function addPostToGallery(postSummary, { append }) {
     return;
   }
 
-  const { media, files } = buildMediaCollection(fullPost);
-  const entry = {
-    key,
-    id: fullPost.id,
-    service: fullPost.service,
-    user: fullPost.user,
-    title: fullPost.title || "Untitled",
-    published: fullPost.published,
-    media,
-    files,
-  };
+    const { media, files, links } = buildMediaCollection(fullPost);
+    const entry = {
+      key,
+      id: fullPost.id,
+      service: fullPost.service,
+      user: fullPost.user,
+      title: fullPost.title || "Untitled",
+      published: fullPost.published,
+      media,
+      files,
+      links,
+    };
 
   if (append) {
     state.galleryPosts = [...state.galleryPosts, entry];
@@ -1651,7 +1902,7 @@ async function addPostGroupToGallery(group, { append }) {
       fullPosts.push(full);
     }
   }
-  const { media, files } = mergeMediaCollections(fullPosts);
+  const { media, files, links } = mergeMediaCollections(fullPosts);
   const entry = {
     key: groupKey,
     id: groupKey,
@@ -1661,6 +1912,7 @@ async function addPostGroupToGallery(group, { append }) {
     published: sorted[0]?.published || null,
     media,
     files,
+    links,
   };
 
   if (append) {
@@ -1807,6 +2059,31 @@ function renderGallery() {
           type: "file",
           fileType,
         });
+      });
+    }
+
+    if (entry.links && entry.links.length > 0) {
+      entry.links.forEach((group) => {
+        const block = document.createElement("div");
+        block.className = "gallery-link-group";
+        const title = document.createElement("div");
+        title.className = "gallery-link-title";
+        title.textContent = group.title || "Links";
+        const actions = document.createElement("div");
+        actions.className = "gallery-link-actions";
+        (group.links || []).forEach((link) => {
+          const button = document.createElement("button");
+          button.type = "button";
+          button.className = "ghost";
+          button.textContent = link.label || "Link";
+          button.addEventListener("click", () => {
+            window.kemono.openExternal(link.url);
+          });
+          actions.appendChild(button);
+        });
+        block.appendChild(title);
+        block.appendChild(actions);
+        mediaWrap.appendChild(block);
       });
     }
 
@@ -1999,6 +2276,14 @@ function setupEventListeners() {
       } else {
         renderPosts();
       }
+    });
+  }
+
+  if (elements.allowLinks) {
+    elements.allowLinks.addEventListener("change", (event) => {
+      state.allowLinks = event.target.checked;
+      state.postsOffset = 0;
+      renderPosts();
     });
   }
 
