@@ -669,6 +669,35 @@ button.ghost:hover {
   gap: 0;
 }
 
+.gallery-media--grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 6px;
+  align-items: start;
+}
+
+.gallery-media--grid .gallery-media-item {
+  width: 100%;
+}
+
+.gallery-media--grid img {
+  width: 100%;
+  height: auto;
+  object-fit: contain;
+  display: block;
+}
+
+.gallery-media--grid video {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.gallery-media--grid .gallery-file,
+.gallery-media--grid .gallery-link-group {
+  width: 100%;
+}
+
 .gallery-media-item {
   width: 100%;
 }

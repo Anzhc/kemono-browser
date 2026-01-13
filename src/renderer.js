@@ -39,6 +39,7 @@ const state = {
   postsAll: [],
   postsAllKey: "",
   autoRetryImages: false,
+  galleryGrid: false,
   galleryTimelineVisible: false,
   outputFolder: "",
 };
@@ -88,6 +89,7 @@ const elements = {
   timeline: document.getElementById("timeline"),
   refreshGalleryImages: document.getElementById("refreshGalleryImages"),
   autoRetryImages: document.getElementById("autoRetryImages"),
+  galleryGrid: document.getElementById("galleryGrid"),
   clearGallery: document.getElementById("clearGallery"),
   toggleGalleryTimeline: document.getElementById("toggleGalleryTimeline"),
   setOutputFolder: document.getElementById("setOutputFolder"),
@@ -1980,7 +1982,9 @@ function renderGallery() {
     section.id = `gallery-post-${entry.key}`;
 
     const mediaWrap = document.createElement("div");
-    mediaWrap.className = "gallery-media";
+    mediaWrap.className = state.galleryGrid
+      ? "gallery-media gallery-media--grid"
+      : "gallery-media";
 
     if (entry.media.length === 0) {
       const fallback = document.createElement("div");
@@ -1991,11 +1995,11 @@ function renderGallery() {
 
     entry.media.forEach((item) => {
       if (item.type === "image") {
-    const mediaId = `gallery-media-${entry.key}-${timelineItems.length}`;
-    const fullUrl = item.url;
-    const mediaItem = document.createElement("div");
-    mediaItem.className = "gallery-media-item";
-    mediaItem.id = mediaId;
+        const mediaId = `gallery-media-${entry.key}-${timelineItems.length}`;
+        const fullUrl = item.url;
+        const mediaItem = document.createElement("div");
+        mediaItem.className = "gallery-media-item";
+        mediaItem.id = mediaId;
         const img = document.createElement("img");
         registerGalleryImage(img, item.url, {
           memKey: item.memoryKey || "",
@@ -2403,6 +2407,13 @@ function setupEventListeners() {
       if (state.autoRetryImages) {
         refreshFailedGalleryImages();
       }
+    });
+  }
+
+  if (elements.galleryGrid) {
+    elements.galleryGrid.addEventListener("change", (event) => {
+      state.galleryGrid = event.target.checked;
+      renderGallery();
     });
   }
 
