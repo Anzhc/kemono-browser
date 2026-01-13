@@ -249,6 +249,10 @@ button.ghost:hover {
   cursor: pointer;
 }
 
+.toggle--inline {
+  margin-left: 6px;
+}
+
 .toggle input {
   width: 14px;
   height: 14px;
