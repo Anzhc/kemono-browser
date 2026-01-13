@@ -31,6 +31,7 @@ const state = {
   postCache: new Map(),
   galleryPosts: [],
   serializePosts: false,
+  serializeAggressive: false,
   postsMinMedia: 0,
   postListItems: new Map(),
   postsRequestId: 0,
@@ -71,6 +72,7 @@ const elements = {
   postsPageInfo: document.getElementById("postsPageInfo"),
   postsList: document.getElementById("postsList"),
   serializePosts: document.getElementById("serializePosts"),
+  serializeAggressive: document.getElementById("serializeAggressive"),
   minMediaFilter: document.getElementById("minMediaFilter"),
   splitterArtistsGallery: document.getElementById("splitterArtistsGallery"),
   splitterGalleryPosts: document.getElementById("splitterGalleryPosts"),
@@ -214,21 +216,44 @@ function stripSeriesSuffix(title) {
   return `${text}${suffix}`.trim();
 }
 
-function getSeriesKey(title) {
+function stripNumericSegments(title) {
+  const parts = String(title || "")
+    .split(/\s*[-–—]\s*/u)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  if (parts.length < 3) {
+    return String(title || "").trim();
+  }
+  const filtered = parts.filter((part) => !isNumericLabel(part));
+  if (filtered.length < 2 || filtered.length === parts.length) {
+    return String(title || "").trim();
+  }
+  return filtered.join(" - ");
+}
+
+function normalizeSeriesTitle(title, aggressive) {
+  const base = stripSeriesSuffix(title);
+  if (!aggressive) {
+    return base;
+  }
+  return stripNumericSegments(base);
+}
+
+function getSeriesKey(title, aggressive) {
   const original = String(title || "").trim().toLowerCase();
-  const stripped = stripSeriesSuffix(title).toLowerCase();
+  const stripped = normalizeSeriesTitle(title, aggressive).toLowerCase();
   if (!stripped || stripped.length < 3 || stripped === original) {
     return "";
   }
   return stripped;
 }
 
-function buildSerializedPosts(posts) {
+function buildSerializedPosts(posts, aggressive) {
   const counts = new Map();
   const groups = new Map();
 
   posts.forEach((post) => {
-    const keyBase = getSeriesKey(post.title);
+    const keyBase = getSeriesKey(post.title, aggressive);
     if (!keyBase) {
       return;
     }
@@ -238,7 +263,7 @@ function buildSerializedPosts(posts) {
       groups.set(key, {
         type: "group",
         key,
-        title: stripSeriesSuffix(post.title),
+        title: normalizeSeriesTitle(post.title, aggressive),
         service: post.service,
         user: post.user,
         posts: [],
@@ -250,7 +275,7 @@ function buildSerializedPosts(posts) {
   const seenGroups = new Set();
   const items = [];
   posts.forEach((post) => {
-    const keyBase = getSeriesKey(post.title);
+    const keyBase = getSeriesKey(post.title, aggressive);
     const groupKey = keyBase ? `${post.service}:${post.user}:${keyBase}` : "";
     if (groupKey && counts.get(groupKey) > 1) {
       if (seenGroups.has(groupKey)) {
@@ -658,7 +683,7 @@ function renderPosts() {
   const totalCount = state.artistProfile?.post_count || null;
   const currentPage = Math.floor(state.postsOffset / PAGE_SIZE) + 1;
   let listItems = isSerialized
-    ? buildSerializedPosts(state.posts)
+    ? buildSerializedPosts(state.posts, state.serializeAggressive)
     : state.posts.map((post) => ({
         type: "post",
         key: buildPostKey(post),
@@ -1947,8 +1972,20 @@ function setupEventListeners() {
   if (elements.serializePosts) {
     elements.serializePosts.addEventListener("change", (event) => {
       state.serializePosts = event.target.checked;
+      if (elements.serializeAggressive) {
+        elements.serializeAggressive.disabled = !state.serializePosts;
+      }
       state.postsOffset = 0;
       loadPosts();
+    });
+  }
+
+  if (elements.serializeAggressive) {
+    elements.serializeAggressive.addEventListener("change", (event) => {
+      state.serializeAggressive = event.target.checked;
+      if (state.serializePosts) {
+        renderPosts();
+      }
     });
   }
 
@@ -2134,6 +2171,9 @@ async function init() {
   elements.artistTitle.textContent = "";
   elements.artistSubtitle.textContent = "";
   updateGalleryTimelineVisibility();
+  if (elements.serializeAggressive) {
+    elements.serializeAggressive.disabled = !state.serializePosts;
+  }
 
   try {
     if (window.kemono.getFavorites) {

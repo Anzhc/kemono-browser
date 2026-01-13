@@ -255,6 +255,10 @@ button.ghost:hover {
   accent-color: var(--accent);
 }
 
+.toggle input:disabled + span {
+  opacity: 0.5;
+}
+
 .field {
   display: inline-flex;
   align-items: center;
