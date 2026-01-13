@@ -2413,7 +2413,11 @@ function setupEventListeners() {
   });
 
   elements.setOutputFolder.addEventListener("click", async () => {
-    await ensureOutputFolder();
+    const folder = await window.kemono.selectOutputFolder();
+    if (folder) {
+      state.outputFolder = folder;
+      setStatus("Output folder updated.", "info");
+    }
   });
 
   elements.clearGallery.addEventListener("click", () => {
