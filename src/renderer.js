@@ -42,6 +42,7 @@ const state = {
   galleryGrid: false,
   galleryTimelineVisible: false,
   outputFolder: "",
+  activePostKey: "",
 };
 
 const gifPreviewCache = new Map();
@@ -762,6 +763,9 @@ function renderPosts() {
     card.className = "card post-card";
     card.dataset.itemKey = item.key;
     card.dataset.itemType = item.type;
+    if (state.activePostKey && state.activePostKey === item.key) {
+      card.classList.add("is-active");
+    }
 
     const thumb = document.createElement("div");
     thumb.className = "post-card__thumb";
@@ -2363,6 +2367,10 @@ function setupEventListeners() {
     } else {
       addPostToGallery(item.post, { append });
     }
+    if (!append) {
+      state.activePostKey = item.key;
+      renderPosts();
+    }
   });
 
   elements.postsList.addEventListener("contextmenu", (event) => {
@@ -2381,6 +2389,8 @@ function setupEventListeners() {
     } else {
       addPostToGallery(item.post, { append: true });
     }
+    state.activePostKey = item.key;
+    renderPosts();
   });
 
   elements.timeline.addEventListener("click", (event) => {

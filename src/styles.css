@@ -489,6 +489,12 @@ button.ghost:hover {
   flex-direction: column;
 }
 
+.post-card.is-active {
+  outline: 1px solid rgba(82, 190, 255, 0.6);
+  outline-offset: -1px;
+  background: #122022;
+}
+
 .post-card__thumb {
   width: 100%;
   aspect-ratio: 1 / 1;
