@@ -17,6 +17,8 @@ contextBridge.exposeInMainWorld("kemono", {
   getFavorites: () => ipcRenderer.invoke("app:getFavorites"),
   saveFavorites: (favorites) =>
     ipcRenderer.invoke("app:saveFavorites", { favorites }),
+  getReadPosts: () => ipcRenderer.invoke("app:getReadPosts"),
+  saveReadPosts: (posts) => ipcRenderer.invoke("app:saveReadPosts", { posts }),
   downloadImage: (url, folder) =>
     ipcRenderer.invoke("app:downloadImage", { url, folder }),
   fetchFileBytes: (url, requestId) =>

@@ -29,11 +29,14 @@ const state = {
   postsQuery: "",
   postsByKey: new Map(),
   postCache: new Map(),
+  readPosts: new Set(),
   galleryPosts: [],
   serializePosts: false,
   serializeAggressive: false,
   postsMinMedia: 0,
   allowLinks: false,
+  postsSort: "date",
+  hideMarked: false,
   postListItems: new Map(),
   postsRequestId: 0,
   postsAll: [],
@@ -81,7 +84,9 @@ const elements = {
   serializePosts: document.getElementById("serializePosts"),
   serializeAggressive: document.getElementById("serializeAggressive"),
   minMediaFilter: document.getElementById("minMediaFilter"),
+  postsSort: document.getElementById("postsSort"),
   allowLinks: document.getElementById("allowLinks"),
+  hideMarked: document.getElementById("hideMarked"),
   splitterArtistsGallery: document.getElementById("splitterArtistsGallery"),
   splitterGalleryPosts: document.getElementById("splitterGalleryPosts"),
   galleryShell: document.getElementById("galleryShell"),
@@ -159,6 +164,112 @@ async function persistFavorites() {
   } catch (error) {
     setStatus(`Failed to save favorites: ${error.message}`, "error");
   }
+}
+
+async function persistReadPosts() {
+  if (!window.kemono.saveReadPosts) {
+    return;
+  }
+  try {
+    await window.kemono.saveReadPosts([...state.readPosts]);
+  } catch (error) {
+    setStatus(`Failed to save marked posts: ${error.message}`, "error");
+  }
+}
+
+function getPostItemKeys(item) {
+  if (!item) {
+    return [];
+  }
+  if (item.type === "group" && Array.isArray(item.posts)) {
+    return item.posts
+      .map((post) => (post ? buildPostKey(post) : ""))
+      .filter(Boolean);
+  }
+  const post = item.post || item;
+  if (post && post.service && post.user && post.id) {
+    return [buildPostKey(post)];
+  }
+  return [];
+}
+
+function isPostItemMarked(item) {
+  const keys = getPostItemKeys(item);
+  if (keys.length === 0) {
+    return false;
+  }
+  return keys.every((key) => state.readPosts.has(key));
+}
+
+function setPostItemMarked(item, marked) {
+  const keys = getPostItemKeys(item);
+  if (keys.length === 0) {
+    return false;
+  }
+  keys.forEach((key) => {
+    if (marked) {
+      state.readPosts.add(key);
+    } else {
+      state.readPosts.delete(key);
+    }
+  });
+  return true;
+}
+
+function getPostItemTimestamp(item) {
+  if (!item) {
+    return 0;
+  }
+  if (item.type === "group" && Array.isArray(item.posts)) {
+    return item.posts.reduce(
+      (maxValue, post) => Math.max(maxValue, getPostTimestamp(post)),
+      0
+    );
+  }
+  const post = item.post || item;
+  return getPostTimestamp(post);
+}
+
+function getPostItemTitle(item) {
+  if (!item) {
+    return "";
+  }
+  if (item.type === "group") {
+    return String(item.title || item.posts?.[0]?.title || "").toLowerCase();
+  }
+  const post = item.post || item;
+  return String(post?.title || "").toLowerCase();
+}
+
+function sortPostItems(items) {
+  const sorted = [...items];
+  const dateTie = (a, b) => {
+    const aTime = getPostItemTimestamp(a);
+    const bTime = getPostItemTimestamp(b);
+    if (bTime !== aTime) {
+      return bTime - aTime;
+    }
+    return getPostItemTitle(a).localeCompare(getPostItemTitle(b));
+  };
+
+  if (state.postsSort === "media-desc") {
+    sorted.sort((a, b) => {
+      const diff = getPostItemMediaCount(b) - getPostItemMediaCount(a);
+      return diff !== 0 ? diff : dateTie(a, b);
+    });
+    return sorted;
+  }
+
+  if (state.postsSort === "media-asc") {
+    sorted.sort((a, b) => {
+      const diff = getPostItemMediaCount(a) - getPostItemMediaCount(b);
+      return diff !== 0 ? diff : dateTie(a, b);
+    });
+    return sorted;
+  }
+
+  sorted.sort(dateTie);
+  return sorted;
 }
 
 function setArtistView(view) {
@@ -707,11 +818,20 @@ function renderPosts() {
     );
   }
 
+  if (state.hideMarked) {
+    listItems = listItems.filter((item) => !isPostItemMarked(item));
+  }
+
+  listItems = sortPostItems(listItems);
+
   let pageItems = listItems;
   if (isSerialized) {
     const totalItems = listItems.length;
     const totalPages = Math.max(1, Math.ceil(totalItems / PAGE_SIZE));
     const maxOffset = Math.max(0, totalItems - PAGE_SIZE);
+    if (state.postsOffset > maxOffset) {
+      state.postsOffset = maxOffset;
+    }
     const canPrev = state.postsOffset > 0;
     const canNext = state.postsOffset < maxOffset;
     elements.postsPrev.disabled = !canPrev;
@@ -763,6 +883,10 @@ function renderPosts() {
     card.className = "card post-card";
     card.dataset.itemKey = item.key;
     card.dataset.itemType = item.type;
+    const isMarked = isPostItemMarked(item);
+    if (isMarked) {
+      card.classList.add("is-read");
+    }
     if (state.activePostKey && state.activePostKey === item.key) {
       card.classList.add("is-active");
     }
@@ -800,12 +924,31 @@ function renderPosts() {
       thumb.appendChild(badge);
     }
 
+    const actions = document.createElement("div");
+    actions.className = "post-card__actions";
+
     const addButton = document.createElement("button");
     addButton.type = "button";
     addButton.dataset.action = "add";
     addButton.textContent = "+";
     addButton.className = "post-card__add";
-    thumb.appendChild(addButton);
+    actions.appendChild(addButton);
+
+    const markButton = document.createElement("button");
+    markButton.type = "button";
+    markButton.dataset.action = "mark";
+    markButton.className = "post-card__mark";
+    const markLabel = isMarked ? "Unmark as read" : "Mark as read";
+    markButton.title = markLabel;
+    markButton.setAttribute("aria-label", markLabel);
+    markButton.setAttribute("aria-pressed", isMarked ? "true" : "false");
+    if (isMarked) {
+      markButton.classList.add("is-active");
+    }
+    markButton.appendChild(createEyeIcon());
+    actions.appendChild(markButton);
+
+    thumb.appendChild(actions);
 
     const footer = document.createElement("div");
     footer.className = "post-card__footer";
@@ -869,6 +1012,27 @@ function postHasGif(post) {
     return post.attachments.some((item) => item && item.path && isGifPath(item.path));
   }
   return false;
+}
+
+function createEyeIcon() {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("aria-hidden", "true");
+
+  const outline = document.createElementNS("http://www.w3.org/2000/svg", "path");
+  outline.setAttribute(
+    "d",
+    "M1.5 12s3.8-7 10.5-7 10.5 7 10.5 7-3.8 7-10.5 7S1.5 12 1.5 12z"
+  );
+
+  const pupil = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+  pupil.setAttribute("cx", "12");
+  pupil.setAttribute("cy", "12");
+  pupil.setAttribute("r", "3.2");
+
+  svg.appendChild(outline);
+  svg.appendChild(pupil);
+  return svg;
 }
 
 function getPostMediaCount(post) {
@@ -2326,6 +2490,22 @@ function setupEventListeners() {
     });
   }
 
+  if (elements.postsSort) {
+    elements.postsSort.addEventListener("change", (event) => {
+      state.postsSort = event.target.value || "date";
+      state.postsOffset = 0;
+      renderPosts();
+    });
+  }
+
+  if (elements.hideMarked) {
+    elements.hideMarked.addEventListener("change", (event) => {
+      state.hideMarked = event.target.checked;
+      state.postsOffset = 0;
+      renderPosts();
+    });
+  }
+
   elements.postsPrev.addEventListener("click", () => {
     if (!state.selectedArtist) {
       return;
@@ -2351,7 +2531,6 @@ function setupEventListeners() {
   });
 
   elements.postsList.addEventListener("click", (event) => {
-    const addButton = event.target.closest("button[data-action='add']");
     const card = event.target.closest(".post-card");
     if (!card) {
       return;
@@ -2361,6 +2540,16 @@ function setupEventListeners() {
     if (!item) {
       return;
     }
+    const markButton = event.target.closest("button[data-action='mark']");
+    if (markButton) {
+      const marked = isPostItemMarked(item);
+      if (setPostItemMarked(item, !marked)) {
+        persistReadPosts();
+        renderPosts();
+      }
+      return;
+    }
+    const addButton = event.target.closest("button[data-action='add']");
     const append = Boolean(addButton);
     if (item.type === "group") {
       addPostGroupToGallery(item, { append });
@@ -2524,11 +2713,21 @@ async function init() {
   if (elements.serializeAggressive) {
     elements.serializeAggressive.disabled = !state.serializePosts;
   }
+  if (elements.postsSort) {
+    elements.postsSort.value = state.postsSort;
+  }
+  if (elements.hideMarked) {
+    elements.hideMarked.checked = state.hideMarked;
+  }
 
   try {
     if (window.kemono.getFavorites) {
       const saved = await window.kemono.getFavorites();
       state.favoriteArtists = new Set(Array.isArray(saved) ? saved : []);
+    }
+    if (window.kemono.getReadPosts) {
+      const saved = await window.kemono.getReadPosts();
+      state.readPosts = new Set(Array.isArray(saved) ? saved : []);
     }
     state.dataBase = await window.kemono.getDataBase();
     state.thumbBase = await window.kemono.getThumbBase();

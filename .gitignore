@@ -24,7 +24,7 @@ release/
 logs/
 tmp/
 temp/
-data/favorites.json
+data/
 
 # Environment files
 .env

@@ -22,6 +22,10 @@ function getFavoritesPath() {
   return path.join(app.getAppPath(), "data", "favorites.json");
 }
 
+function getReadPostsPath() {
+  return path.join(app.getAppPath(), "data", "read-posts.json");
+}
+
 function loadFavorites() {
   const filePath = getFavoritesPath();
   if (!fs.existsSync(filePath)) {
@@ -38,6 +42,31 @@ function loadFavorites() {
 
 function saveFavorites(list) {
   const filePath = getFavoritesPath();
+  const dir = path.dirname(filePath);
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
+  const payload = Array.isArray(list) ? list : [];
+  fs.writeFileSync(filePath, JSON.stringify(payload, null, 2));
+  return true;
+}
+
+function loadReadPosts() {
+  const filePath = getReadPostsPath();
+  if (!fs.existsSync(filePath)) {
+    return [];
+  }
+  try {
+    const raw = fs.readFileSync(filePath, "utf-8");
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (error) {
+    return [];
+  }
+}
+
+function saveReadPosts(list) {
+  const filePath = getReadPostsPath();
   const dir = path.dirname(filePath);
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
@@ -297,6 +326,14 @@ app.whenReady().then(() => {
 
   ipcMain.handle("app:saveFavorites", async (_event, { favorites }) => {
     return saveFavorites(favorites);
+  });
+
+  ipcMain.handle("app:getReadPosts", async () => {
+    return loadReadPosts();
+  });
+
+  ipcMain.handle("app:saveReadPosts", async (_event, { posts }) => {
+    return saveReadPosts(posts);
   });
 
   ipcMain.handle("app:downloadImage", async (_event, { url, folder }) => {
