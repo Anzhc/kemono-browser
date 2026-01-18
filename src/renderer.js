@@ -37,6 +37,7 @@ const state = {
   allowLinks: false,
   postsSort: "date",
   hideMarked: false,
+  galleryScrollTargets: [],
   postListItems: new Map(),
   postsRequestId: 0,
   postsAll: [],
@@ -97,6 +98,8 @@ const elements = {
   autoRetryImages: document.getElementById("autoRetryImages"),
   galleryGrid: document.getElementById("galleryGrid"),
   clearGallery: document.getElementById("clearGallery"),
+  galleryScrollUp: document.getElementById("galleryScrollUp"),
+  galleryScrollDown: document.getElementById("galleryScrollDown"),
   toggleGalleryTimeline: document.getElementById("toggleGalleryTimeline"),
   setOutputFolder: document.getElementById("setOutputFolder"),
 };
@@ -1469,6 +1472,74 @@ function scheduleSideTimelineSync() {
   });
 }
 
+function getGalleryScrollTargets() {
+  if (!elements.gallery) {
+    return [];
+  }
+  const targets = Array.isArray(state.galleryScrollTargets)
+    ? state.galleryScrollTargets
+    : [];
+  return targets
+    .map((id) => document.getElementById(id))
+    .filter((node) => node && elements.gallery.contains(node));
+}
+
+function getGalleryScrollIndex(targets) {
+  if (!elements.gallery || targets.length === 0) {
+    return -1;
+  }
+  const galleryRect = elements.gallery.getBoundingClientRect();
+  const topSnap = galleryRect.top + 6;
+  let currentIndex = -1;
+  let fallbackIndex = 0;
+  let fallbackDelta = Infinity;
+
+  targets.forEach((target, index) => {
+    const rect = target.getBoundingClientRect();
+    const delta = Math.abs(rect.top - galleryRect.top);
+    if (delta < fallbackDelta) {
+      fallbackDelta = delta;
+      fallbackIndex = index;
+    }
+    if (rect.top <= topSnap) {
+      currentIndex = index;
+    }
+  });
+
+  return currentIndex === -1 ? fallbackIndex : currentIndex;
+}
+
+function scrollGalleryByStep(step) {
+  const targets = getGalleryScrollTargets();
+  if (targets.length === 0) {
+    return;
+  }
+  const currentIndex = getGalleryScrollIndex(targets);
+  if (currentIndex === -1) {
+    return;
+  }
+  const nextIndex = Math.max(0, Math.min(targets.length - 1, currentIndex + step));
+  const target = targets[nextIndex];
+  if (!target) {
+    return;
+  }
+  target.scrollIntoView({ behavior: "smooth", block: "start" });
+  if (target.id) {
+    updateSideTimelineActive(target.id);
+  }
+}
+
+function isArrowKeyTargetEditable(target) {
+  if (!target || !(target instanceof HTMLElement)) {
+    return false;
+  }
+  if (target.isContentEditable) {
+    return true;
+  }
+  const tag = target.tagName;
+  return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
+}
+
 async function previewZipInGallery(url, label, host, button) {
   const requestId = `zip-${Date.now()}-${Math.random()
     .toString(36)
@@ -2134,6 +2205,7 @@ function renderGallery() {
     elements.gallerySideTimeline.innerHTML = "";
   }
   resetGalleryLoadQueue();
+  state.galleryScrollTargets = [];
   if (state.galleryPosts.length === 0) {
     const empty = document.createElement("div");
     empty.className = "empty-state";
@@ -2295,6 +2367,9 @@ function renderGallery() {
   });
 
   renderGallerySideTimeline(timelineItems);
+  state.galleryScrollTargets = timelineItems
+    .map((item) => item.id)
+    .filter(Boolean);
   syncSideTimelineToScroll();
 }
 
@@ -2616,6 +2691,18 @@ function setupEventListeners() {
     });
   }
 
+  if (elements.galleryScrollUp) {
+    elements.galleryScrollUp.addEventListener("click", () => {
+      scrollGalleryByStep(-1);
+    });
+  }
+
+  if (elements.galleryScrollDown) {
+    elements.galleryScrollDown.addEventListener("click", () => {
+      scrollGalleryByStep(1);
+    });
+  }
+
   elements.toggleGalleryTimeline.addEventListener("click", () => {
     state.galleryTimelineVisible = !state.galleryTimelineVisible;
     updateGalleryTimelineVisibility();
@@ -2639,6 +2726,25 @@ function setupEventListeners() {
 
   elements.gallery.addEventListener("scroll", () => {
     scheduleSideTimelineSync();
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (event.defaultPrevented) {
+      return;
+    }
+    if (event.altKey || event.ctrlKey || event.metaKey) {
+      return;
+    }
+    if (isArrowKeyTargetEditable(event.target)) {
+      return;
+    }
+    if (event.key === "ArrowUp") {
+      event.preventDefault();
+      scrollGalleryByStep(-1);
+    } else if (event.key === "ArrowDown") {
+      event.preventDefault();
+      scrollGalleryByStep(1);
+    }
   });
 
   elements.gallery.addEventListener("contextmenu", async (event) => {
