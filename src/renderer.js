@@ -275,6 +275,14 @@ function sortPostItems(items) {
   return sorted;
 }
 
+function shouldLoadAllPosts() {
+  return (
+    state.serializePosts ||
+    state.postsSort === "media-desc" ||
+    state.postsSort === "media-asc"
+  );
+}
+
 function setArtistView(view) {
   state.artistView = view;
   if (elements.artistTabSearch) {
@@ -724,13 +732,14 @@ async function loadPosts() {
   }
 
   const requestId = ++state.postsRequestId;
-  setStatus(state.serializePosts ? "Loading all posts..." : "Loading posts...", "info");
+  const loadAll = shouldLoadAllPosts();
+  setStatus(loadAll ? "Loading all posts..." : "Loading posts...", "info");
   elements.postsList.innerHTML = "";
   setPostsEnabled(true);
 
   try {
-    if (state.serializePosts) {
-      await loadSerializedPosts(requestId);
+    if (loadAll) {
+      await loadAllPosts(requestId);
     } else {
       const posts = await window.kemono.getCreatorPosts(
         state.selectedArtist.service,
@@ -752,7 +761,7 @@ async function loadPosts() {
   }
 }
 
-async function loadSerializedPosts(requestId) {
+async function loadAllPosts(requestId) {
   const artistKey = getArtistKey(state.selectedArtist);
   const query = state.postsQuery || "";
   const cacheKey = `${artistKey}|${query}`;
@@ -805,6 +814,7 @@ async function loadSerializedPosts(requestId) {
 function renderPosts() {
   setPostsEnabled(true);
   const isSerialized = state.serializePosts;
+  const useLocalPaging = shouldLoadAllPosts();
   const totalCount = state.artistProfile?.post_count || null;
   const currentPage = Math.floor(state.postsOffset / PAGE_SIZE) + 1;
   let listItems = isSerialized
@@ -828,7 +838,7 @@ function renderPosts() {
   listItems = sortPostItems(listItems);
 
   let pageItems = listItems;
-  if (isSerialized) {
+  if (useLocalPaging) {
     const totalItems = listItems.length;
     const totalPages = Math.max(1, Math.ceil(totalItems / PAGE_SIZE));
     const maxOffset = Math.max(0, totalItems - PAGE_SIZE);
@@ -839,9 +849,10 @@ function renderPosts() {
     const canNext = state.postsOffset < maxOffset;
     elements.postsPrev.disabled = !canPrev;
     elements.postsNext.disabled = !canNext;
+    const label = isSerialized ? "entries" : "posts";
     elements.postsPageInfo.textContent = `Page ${currentPage} of ${totalPages} - ${formatNumber(
       totalItems
-    )} entries`;
+    )} ${label}`;
     pageItems = listItems.slice(
       state.postsOffset,
       state.postsOffset + PAGE_SIZE
@@ -2569,7 +2580,7 @@ function setupEventListeners() {
     elements.postsSort.addEventListener("change", (event) => {
       state.postsSort = event.target.value || "date";
       state.postsOffset = 0;
-      renderPosts();
+      loadPosts();
     });
   }
 
@@ -2586,7 +2597,7 @@ function setupEventListeners() {
       return;
     }
     state.postsOffset = Math.max(0, state.postsOffset - PAGE_SIZE);
-    if (state.serializePosts) {
+    if (shouldLoadAllPosts()) {
       renderPosts();
     } else {
       loadPosts();
@@ -2598,7 +2609,7 @@ function setupEventListeners() {
       return;
     }
     state.postsOffset += PAGE_SIZE;
-    if (state.serializePosts) {
+    if (shouldLoadAllPosts()) {
       renderPosts();
     } else {
       loadPosts();
