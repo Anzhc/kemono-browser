@@ -22,6 +22,7 @@ const state = {
   filteredArtists: [],
   favoriteArtists: new Set(),
   artistView: "search",
+  favoritesSort: "favorites",
   selectedArtist: null,
   artistProfile: null,
   posts: [],
@@ -74,6 +75,7 @@ const elements = {
   artistsList: document.getElementById("artistsList"),
   artistTabSearch: document.getElementById("artistTabSearch"),
   artistTabFavorites: document.getElementById("artistTabFavorites"),
+  favoritesSort: document.getElementById("favoritesSort"),
   artistTitle: document.getElementById("artistTitle"),
   artistSubtitle: document.getElementById("artistSubtitle"),
   postSearch: document.getElementById("postSearch"),
@@ -291,7 +293,37 @@ function setArtistView(view) {
   if (elements.artistTabFavorites) {
     elements.artistTabFavorites.classList.toggle("is-active", view === "favorites");
   }
+  if (elements.favoritesSort) {
+    elements.favoritesSort.disabled = view !== "favorites";
+  }
   applyArtistFilter();
+}
+
+function sortFavoriteArtists(artists) {
+  const sorted = [...artists];
+  sorted.sort((a, b) => {
+    if (state.favoritesSort === "updated") {
+      const updatedDiff = (b.updated || 0) - (a.updated || 0);
+      if (updatedDiff !== 0) {
+        return updatedDiff;
+      }
+      const favoriteDiff = (b.favorited || 0) - (a.favorited || 0);
+      if (favoriteDiff !== 0) {
+        return favoriteDiff;
+      }
+    } else {
+      const favoriteDiff = (b.favorited || 0) - (a.favorited || 0);
+      if (favoriteDiff !== 0) {
+        return favoriteDiff;
+      }
+      const updatedDiff = (b.updated || 0) - (a.updated || 0);
+      if (updatedDiff !== 0) {
+        return updatedDiff;
+      }
+    }
+    return String(a.name || "").localeCompare(String(b.name || ""));
+  });
+  return sorted;
 }
 
 function isNumericLabel(text) {
@@ -566,7 +598,7 @@ function applyArtistFilter() {
     state.artistView === "favorites"
       ? state.creatorsSorted.filter((artist) => isArtistFavorite(artist))
       : state.creatorsSorted;
-  state.filteredArtists = base.filter((artist) => {
+  const filtered = base.filter((artist) => {
     if (service !== "all" && artist.service !== service) {
       return false;
     }
@@ -577,6 +609,8 @@ function applyArtistFilter() {
     const id = (artist.id || "").trim().toLowerCase();
     return name.includes(query) || id.includes(query);
   });
+  state.filteredArtists =
+    state.artistView === "favorites" ? sortFavoriteArtists(filtered) : filtered;
 
   state.artistsPage = 0;
   renderArtists();
@@ -2482,6 +2516,15 @@ function setupEventListeners() {
     applyArtistFilter();
   });
 
+  if (elements.favoritesSort) {
+    elements.favoritesSort.addEventListener("change", (event) => {
+      state.favoritesSort = event.target.value || "favorites";
+      if (state.artistView === "favorites") {
+        applyArtistFilter();
+      }
+    });
+  }
+
   elements.artistsPrev.addEventListener("click", () => {
     state.artistsPage = Math.max(0, state.artistsPage - 1);
     renderArtists();
@@ -2835,6 +2878,10 @@ async function init() {
   }
   if (elements.hideMarked) {
     elements.hideMarked.checked = state.hideMarked;
+  }
+  if (elements.favoritesSort) {
+    elements.favoritesSort.value = state.favoritesSort;
+    elements.favoritesSort.disabled = state.artistView !== "favorites";
   }
 
   try {
