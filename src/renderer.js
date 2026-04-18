@@ -64,6 +64,12 @@ const galleryLoadState = {
 const MAX_GALLERY_WORKERS = 10;
 const MAX_GALLERY_RETRIES = 3;
 const GALLERY_RETRY_DELAYS = [1500, 3500, 7000];
+const MAX_FAVORITE_REFRESH_WORKERS = 4;
+
+const favoriteRefreshState = {
+  inFlight: new Set(),
+  renderScheduled: false,
+};
 
 const elements = {
   statusMessage: document.getElementById("statusMessage"),
@@ -129,11 +135,40 @@ function sanitizeFilename(value) {
     .trim();
 }
 
-function formatDate(value) {
+function normalizeTimestamp(value) {
   if (!value) {
+    return 0;
+  }
+  if (value instanceof Date) {
+    const time = value.getTime();
+    return Number.isFinite(time) ? time : 0;
+  }
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) {
+      return 0;
+    }
+    return value < 1e12 ? value * 1000 : value;
+  }
+  const text = String(value).trim();
+  if (!text) {
+    return 0;
+  }
+  if (/^\d+$/.test(text)) {
+    const numeric = Number(text);
+    if (Number.isFinite(numeric)) {
+      return numeric < 1e12 ? numeric * 1000 : numeric;
+    }
+  }
+  const parsed = Date.parse(text);
+  return Number.isNaN(parsed) ? 0 : parsed;
+}
+
+function formatDate(value) {
+  const timestamp = normalizeTimestamp(value);
+  if (!timestamp) {
     return "Unknown";
   }
-  const date = new Date(value);
+  const date = new Date(timestamp);
   return date.toLocaleDateString(undefined, {
     year: "numeric",
     month: "short",
@@ -154,6 +189,124 @@ function buildPostKey(post) {
 
 function getArtistKey(artist) {
   return `${artist.service}:${artist.id}`;
+}
+
+function findArtistRecord(artist) {
+  if (!artist) {
+    return null;
+  }
+  return (
+    state.creators.find(
+      (entry) =>
+        entry.service === artist.service && String(entry.id) === String(artist.id)
+    ) || null
+  );
+}
+
+function getArtistUpdatedTimestamp(artist) {
+  return normalizeTimestamp(artist?.lastUpdatedAt ?? artist?.updated);
+}
+
+function refreshArtistsAfterMetadataChange() {
+  if (state.artistView === "favorites" && state.favoritesSort === "updated") {
+    applyArtistFilter({ preservePage: true });
+    return;
+  }
+  renderArtists();
+}
+
+function scheduleArtistsMetadataRefreshRender() {
+  if (favoriteRefreshState.renderScheduled) {
+    return;
+  }
+  favoriteRefreshState.renderScheduled = true;
+  requestAnimationFrame(() => {
+    favoriteRefreshState.renderScheduled = false;
+    refreshArtistsAfterMetadataChange();
+  });
+}
+
+function syncArtistUpdatedAt(artist, ...candidates) {
+  if (!artist) {
+    return false;
+  }
+  const record = findArtistRecord(artist);
+  const entries = [artist, record].filter(
+    (entry, index, list) => entry && list.indexOf(entry) === index
+  );
+  const current = entries.reduce(
+    (maxValue, entry) => Math.max(maxValue, getArtistUpdatedTimestamp(entry)),
+    0
+  );
+  const next = candidates.reduce(
+    (maxValue, value) => Math.max(maxValue, normalizeTimestamp(value)),
+    current
+  );
+  if (!next || next === current) {
+    return false;
+  }
+  entries.forEach((entry) => {
+    entry.lastUpdatedAt = next;
+  });
+  return true;
+}
+
+async function refreshArtistMetadata(artist) {
+  const record = findArtistRecord(artist) || artist;
+  if (!record) {
+    return false;
+  }
+  const key = getArtistKey(record);
+  if (favoriteRefreshState.inFlight.has(key)) {
+    return false;
+  }
+  favoriteRefreshState.inFlight.add(key);
+  try {
+    const [profileResult, postsResult] = await Promise.allSettled([
+      window.kemono.getCreatorProfile(record.service, record.id),
+      window.kemono.getCreatorPosts(record.service, record.id, {
+        offset: 0,
+        query: "",
+      }),
+    ]);
+    const profile =
+      profileResult.status === "fulfilled" ? profileResult.value : null;
+    const posts = postsResult.status === "fulfilled" ? postsResult.value : [];
+    const changed = syncArtistUpdatedAt(
+      record,
+      profile?.updated,
+      getLatestPostsTimestamp(posts)
+    );
+    if (changed) {
+      scheduleArtistsMetadataRefreshRender();
+    }
+    return changed;
+  } catch (error) {
+    return false;
+  } finally {
+    favoriteRefreshState.inFlight.delete(key);
+  }
+}
+
+async function refreshFavoriteArtistsMetadata(artists = null) {
+  const records = (artists || state.creators.filter((artist) => isArtistFavorite(artist)))
+    .map((artist) => findArtistRecord(artist) || artist)
+    .filter((artist, index, list) => artist && list.indexOf(artist) === index);
+  if (records.length === 0) {
+    return;
+  }
+  const queue = [...records];
+  const workerCount = Math.min(MAX_FAVORITE_REFRESH_WORKERS, queue.length);
+  const workers = Array.from({ length: workerCount }, async () => {
+    while (queue.length > 0) {
+      const next = queue.shift();
+      if (!next) {
+        return;
+      }
+      await refreshArtistMetadata(next);
+    }
+  });
+  await Promise.all(workers);
 }
 
 function isArtistFavorite(artist) {
@@ -303,7 +456,7 @@ function sortFavoriteArtists(artists) {
   const sorted = [...artists];
   sorted.sort((a, b) => {
     if (state.favoritesSort === "updated") {
-      const updatedDiff = (b.updated || 0) - (a.updated || 0);
+      const updatedDiff = getArtistUpdatedTimestamp(b) - getArtistUpdatedTimestamp(a);
       if (updatedDiff !== 0) {
         return updatedDiff;
       }
@@ -316,7 +469,7 @@ function sortFavoriteArtists(artists) {
       if (favoriteDiff !== 0) {
         return favoriteDiff;
       }
-      const updatedDiff = (b.updated || 0) - (a.updated || 0);
+      const updatedDiff = getArtistUpdatedTimestamp(b) - getArtistUpdatedTimestamp(a);
       if (updatedDiff !== 0) {
         return updatedDiff;
       }
@@ -521,16 +674,56 @@ function isGifPath(path) {
   return getExtension(path) === "gif";
 }
 
-function buildMediaUrl(path) {
+function getMimeTypeForPath(path) {
+  switch (getExtension(path)) {
+    case "jpg":
+    case "jpeg":
+      return "image/jpeg";
+    case "png":
+      return "image/png";
+    case "webp":
+      return "image/webp";
+    case "gif":
+      return "image/gif";
+    case "bmp":
+      return "image/bmp";
+    case "svg":
+      return "image/svg+xml";
+    default:
+      return "application/octet-stream";
+  }
+}
+
+function normalizeDataPath(path) {
   if (!path) {
     return "";
   }
-  return `${state.dataBase}${path}`;
+  if (path.startsWith("http")) {
+    return path;
+  }
+  if (path.startsWith("/data/")) {
+    return path;
+  }
+  return path.startsWith("/") ? `/data${path}` : `/data/${path}`;
+}
+
+function buildMediaUrl(path, server = "") {
+  if (!path) {
+    return "";
+  }
+  if (path.startsWith("http")) {
+    return path;
+  }
+  const base = server || state.dataBase;
+  return `${base}${normalizeDataPath(path)}`;
 }
 
 function buildThumbUrl(path) {
   if (!path) {
     return "";
+  }
+  if (path.startsWith("http")) {
+    return path;
   }
   return `${state.thumbBase}${path}`;
 }
@@ -591,7 +784,7 @@ async function getGifPreviewDataUrl(path) {
   return result;
 }
 
-function applyArtistFilter() {
+function applyArtistFilter(options = {}) {
   const query = state.artistQuery.trim().toLowerCase();
   const service = state.serviceFilter;
   const base =
@@ -612,7 +805,9 @@ function applyArtistFilter() {
   state.filteredArtists =
     state.artistView === "favorites" ? sortFavoriteArtists(filtered) : filtered;
 
-  state.artistsPage = 0;
+  if (!options.preservePage) {
+    state.artistsPage = 0;
+  }
   renderArtists();
 }
 
@@ -695,9 +890,7 @@ function renderArtists() {
 
     const updated = document.createElement("div");
     updated.className = "card__meta";
-    updated.textContent = `Updated: ${formatDate(
-      artist.updated ? artist.updated * 1000 : null
-    )}`;
+    updated.textContent = `Updated: ${formatDate(getArtistUpdatedTimestamp(artist))}`;
 
     body.appendChild(titleRow);
     body.appendChild(meta);
@@ -724,7 +917,7 @@ function renderArtists() {
 }
 
 async function selectArtist(artist) {
-  state.selectedArtist = artist;
+  state.selectedArtist = findArtistRecord(artist) || artist;
   state.postsOffset = 0;
   state.postsQuery = "";
   elements.postSearch.value = "";
@@ -733,17 +926,21 @@ async function selectArtist(artist) {
 
   try {
     state.artistProfile = await window.kemono.getCreatorProfile(
-      artist.service,
-      artist.id
+      state.selectedArtist.service,
+      state.selectedArtist.id
     );
+    if (syncArtistUpdatedAt(state.selectedArtist, state.artistProfile?.updated)) {
+      refreshArtistsAfterMetadataChange();
+    }
   } catch (error) {
     state.artistProfile = null;
     setStatus(`Failed to load profile: ${error.message}`, "error");
   }
 
-  const name = (state.artistProfile && state.artistProfile.name) || artist.name;
+  const name =
+    (state.artistProfile && state.artistProfile.name) || state.selectedArtist.name;
   elements.artistTitle.textContent = name || "Unknown";
-  elements.artistSubtitle.textContent = `${capitalize(artist.service)} - ID ${artist.id}`;
+  elements.artistSubtitle.textContent = `${capitalize(state.selectedArtist.service)} - ID ${state.selectedArtist.id}`;
 
   await loadPosts();
 }
@@ -755,6 +952,16 @@ function setPostsList(posts) {
   state.posts.forEach((post) => {
     state.postsByKey.set(buildPostKey(post), post);
   });
+}
+
+function getLatestPostsTimestamp(posts) {
+  if (!Array.isArray(posts) || posts.length === 0) {
+    return 0;
+  }
+  return posts.reduce(
+    (maxValue, post) => Math.max(maxValue, getPostTimestamp(post)),
+    0
+  );
 }
 
 async function loadPosts() {
@@ -787,6 +994,15 @@ async function loadPosts() {
         return;
       }
       setPostsList(posts);
+      if (
+        syncArtistUpdatedAt(
+          state.selectedArtist,
+          state.artistProfile?.updated,
+          getLatestPostsTimestamp(posts)
+        )
+      ) {
+        refreshArtistsAfterMetadataChange();
+      }
       renderPosts();
       setStatus("Posts loaded.", "info");
     }
@@ -841,6 +1057,15 @@ async function loadAllPosts(requestId) {
   }
 
   setPostsList(state.postsAll);
+  if (
+    syncArtistUpdatedAt(
+      state.selectedArtist,
+      state.artistProfile?.updated,
+      getLatestPostsTimestamp(state.postsAll)
+    )
+  ) {
+    refreshArtistsAfterMetadataChange();
+  }
   renderPosts();
   setStatus(`Loaded ${formatNumber(state.postsAll.length)} posts.`, "info");
 }
@@ -1140,7 +1365,7 @@ function buildMediaCollection(post) {
   const links = extractLinkGroups(post);
   entries.forEach((item) => {
     const path = item.path;
-    const url = buildMediaUrl(path);
+    const url = buildMediaUrl(path, item.server);
     const type = getMediaType(path);
     const payload = {
       name: item.name || path.split("/").pop(),
@@ -1148,8 +1373,10 @@ function buildMediaCollection(post) {
       type,
       path,
       isGif: isGifPath(path),
+      server: item.server || "",
     };
     if (type === "image" || type === "video") {
+      payload.thumbUrl = buildThumbUrl(path);
       media.push(payload);
     } else {
       files.push(payload);
@@ -1167,6 +1394,10 @@ function registerGalleryImage(img, src, options = {}) {
   }
   if (options.filename) {
     img.dataset.filename = options.filename;
+  }
+  if (options.fallbackSrc) {
+    img.dataset.fallbackSrc = options.fallbackSrc;
+    img.src = options.fallbackSrc;
   }
   img.addEventListener("load", () => {
     img.dataset.loadState = "loaded";
@@ -1250,9 +1481,41 @@ function pumpGalleryQueue() {
         pumpGalleryQueue();
       }
     };
+    if (src.startsWith("http")) {
+      void loadGalleryImageFromBytes(img, src, token, onDone);
+      continue;
+    }
     img.addEventListener("load", onDone, { once: true });
     img.addEventListener("error", onDone, { once: true });
     img.src = src;
+  }
+}
+
+async function loadGalleryImageFromBytes(img, src, token, onDone) {
+  try {
+    const bytes = await window.kemono.getMediaBytes(src);
+    if (token !== galleryLoadState.token || !img.isConnected) {
+      onDone();
+      return;
+    }
+    const blob = new Blob([normalizeBytes(bytes)], {
+      type: getMimeTypeForPath(img.dataset.filename || src),
+    });
+    const objectUrl = URL.createObjectURL(blob);
+    memoryMedia.set(objectUrl, {
+      blob,
+      name: img.dataset.filename || src.split("/").pop() || "image",
+    });
+    img.addEventListener("load", onDone, { once: true });
+    img.addEventListener("error", onDone, { once: true });
+    img.src = objectUrl;
+  } catch (_error) {
+    img.dataset.loadState = "error";
+    if (img.dataset.fallbackSrc) {
+      img.src = img.dataset.fallbackSrc;
+    }
+    scheduleGalleryRetry(img);
+    onDone();
   }
 }
 
@@ -1428,7 +1691,7 @@ function renderGallerySideTimeline(items) {
       }
       img.onerror = () => {
         img.onerror = null;
-        img.src = buildMediaUrl(item.path) || thumbUrl;
+        img.src = fullUrl || buildMediaUrl(item.path);
       };
       button.appendChild(img);
     } else {
@@ -1847,16 +2110,9 @@ function getPostTimestamp(post) {
   if (!post) {
     return 0;
   }
-  const raw =
-    post.published ?? post.added ?? post.updated ?? post.created ?? 0;
-  if (!raw) {
-    return 0;
-  }
-  if (typeof raw === "number") {
-    return raw < 1e12 ? raw * 1000 : raw;
-  }
-  const parsed = Date.parse(raw);
-  return Number.isNaN(parsed) ? 0 : parsed;
+  return normalizeTimestamp(
+    post.published ?? post.added ?? post.updated ?? post.created ?? 0
+  );
 }
 
 function getPostContentHtml(post) {
@@ -2289,6 +2545,7 @@ function renderGallery() {
         registerGalleryImage(img, item.url, {
           memKey: item.memoryKey || "",
           filename: item.name || "",
+          fallbackSrc: item.thumbUrl || "",
         });
         img.alt = item.name || entry.title;
         img.decoding = "async";
@@ -2543,10 +2800,17 @@ function setupEventListeners() {
     const favButton = event.target.closest("button[data-action='favorite']");
     if (favButton) {
       const key = `${card.dataset.service}:${card.dataset.id}`;
+      const artist = findArtistRecord({
+        service: card.dataset.service,
+        id: card.dataset.id,
+      });
       if (state.favoriteArtists.has(key)) {
         state.favoriteArtists.delete(key);
       } else {
         state.favoriteArtists.add(key);
+        if (artist) {
+          void refreshFavoriteArtistsMetadata([artist]);
+        }
       }
       persistFavorites();
       applyArtistFilter();
@@ -2913,6 +3177,7 @@ async function init() {
 
     applyArtistFilter();
     setStatus("Ready.", "info");
+    void refreshFavoriteArtistsMetadata();
   } catch (error) {
     setStatus(`Failed to load creators: ${error.message}`, "error");
   }

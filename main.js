@@ -1,4 +1,12 @@
-const { app, BrowserWindow, ipcMain, shell, Menu, dialog } = require("electron");
+const {
+  app,
+  BrowserWindow,
+  ipcMain,
+  shell,
+  Menu,
+  dialog,
+  session,
+} = require("electron");
 const path = require("path");
 const fs = require("fs");
 const JSZip = require("jszip");
@@ -117,7 +125,7 @@ async function fetchBufferWithProgress(
   channel,
   doneLabel
 ) {
-  const response = await fetch(url);
+  const response = await networkFetch(normalizeKemonoFetchUrl(url));
   if (!response.ok) {
     const text = await response.text();
     throw new Error(`Download failed ${response.status}: ${text}`);
@@ -212,10 +220,67 @@ function buildQuery(params = {}) {
   return search.toString();
 }
 
+async function networkFetch(url, options = {}) {
+  const targetUrl = String(url || "");
+  const headers = new Headers(options.headers || {});
+  if (app.isReady() && /(^https?:\/\/)(?:[^/]+\.)?kemono\.cr(\/|$)/i.test(targetUrl)) {
+    const cookieItems = await session.defaultSession.cookies.get({ url: targetUrl });
+    if (cookieItems.length > 0 && !headers.has("Cookie")) {
+      headers.set(
+        "Cookie",
+        cookieItems.map((item) => `${item.name}=${item.value}`).join("; ")
+      );
+    }
+    if (!headers.has("Referer")) {
+      headers.set("Referer", "https://kemono.cr/");
+    }
+    if (!headers.has("Origin")) {
+      headers.set("Origin", "https://kemono.cr");
+    }
+    if (!headers.has("Accept-Language")) {
+      headers.set("Accept-Language", "en-US,en;q=0.9");
+    }
+    if (!headers.has("User-Agent")) {
+      headers.set("User-Agent", session.defaultSession.getUserAgent());
+    }
+  }
+  if (app.isReady()) {
+    return session.defaultSession.fetch(url, {
+      ...options,
+      headers,
+    });
+  }
+  return fetch(url, {
+    ...options,
+    headers,
+  });
+}
+
+function normalizeKemonoFetchUrl(value) {
+  if (!value) {
+    return value;
+  }
+  if (!String(value).startsWith("http")) {
+    return `https://kemono.cr/data${value}`;
+  }
+  try {
+    const parsed = new URL(value);
+    if (
+      /^n\d+\.kemono\.cr$/i.test(parsed.hostname) &&
+      parsed.pathname.startsWith("/data/")
+    ) {
+      parsed.hostname = "kemono.cr";
+    }
+    return parsed.toString();
+  } catch (_error) {
+    return value;
+  }
+}
+
 async function apiGet(pathname, params) {
   const query = buildQuery(params);
   const url = query ? `${API_BASE}${pathname}?${query}` : `${API_BASE}${pathname}`;
-  const response = await fetch(url, {
+  const response = await networkFetch(url, {
     headers: {
       Accept: "text/css",
     },
@@ -225,6 +290,40 @@ async function apiGet(pathname, params) {
     throw new Error(`API ${response.status} ${response.statusText}: ${text}`);
   }
   return response.json();
+}
+
+function enrichPostMediaServers(payload) {
+  if (!payload || !payload.post) {
+    return payload?.post || payload;
+  }
+
+  const serverByPath = new Map();
+  [payload.attachments, payload.previews, payload.videos].forEach((items) => {
+    if (!Array.isArray(items)) {
+      return;
+    }
+    items.forEach((item) => {
+      if (item?.path && item?.server && !serverByPath.has(item.path)) {
+        serverByPath.set(item.path, item.server);
+      }
+    });
+  });
+
+  const withServer = (item) => {
+    if (!item?.path) {
+      return item;
+    }
+    const server = item.server || serverByPath.get(item.path) || "";
+    return server ? { ...item, server } : item;
+  };
+
+  return {
+    ...payload.post,
+    file: withServer(payload.post.file),
+    attachments: Array.isArray(payload.post.attachments)
+      ? payload.post.attachments.map(withServer)
+      : [],
+  };
 }
 
 async function getCreators() {
@@ -277,12 +376,12 @@ app.whenReady().then(() => {
     "api:getPost",
     async (_event, { service, id, postId }) => {
       const data = await apiGet(`/${service}/user/${id}/post/${postId}`);
-      return data.post || data;
+      return enrichPostMediaServers(data);
     }
   );
 
   ipcMain.handle("api:getDataBase", () => {
-    return "https://kemono.cr/data";
+    return "https://kemono.cr";
   });
 
   ipcMain.handle("api:getThumbBase", () => {
@@ -290,9 +389,12 @@ app.whenReady().then(() => {
   });
 
   ipcMain.handle("api:getMediaBytes", async (_event, { path }) => {
-    const base = "https://kemono.cr/data";
-    const url = path.startsWith("http") ? path : `${base}${path}`;
-    const response = await fetch(url);
+    const url = normalizeKemonoFetchUrl(path);
+    const response = await networkFetch(url, {
+      headers: {
+        Accept: "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+      },
+    });
     if (!response.ok) {
       const text = await response.text();
       throw new Error(`Media ${response.status} ${response.statusText}: ${text}`);
@@ -345,7 +447,7 @@ app.whenReady().then(() => {
     const baseName = path.basename(parsed.pathname) || "image";
     const candidate = getUniquePath(targetFolder, baseName);
 
-    const response = await fetch(url);
+    const response = await networkFetch(normalizeKemonoFetchUrl(url));
     if (!response.ok) {
       const text = await response.text();
       throw new Error(`Download failed ${response.status}: ${text}`);
