@@ -298,7 +298,9 @@ function enrichPostMediaServers(payload) {
   }
 
   const serverByPath = new Map();
-  [payload.attachments, payload.previews, payload.videos].forEach((items) => {
+  // Preview entries are thumbnail-only and should not become the source of truth
+  // for original media URLs in the gallery.
+  [payload.attachments, payload.videos].forEach((items) => {
     if (!Array.isArray(items)) {
       return;
     }

@@ -64,6 +64,7 @@ const galleryLoadState = {
 const MAX_GALLERY_WORKERS = 10;
 const MAX_GALLERY_RETRIES = 3;
 const GALLERY_RETRY_DELAYS = [1500, 3500, 7000];
+const GALLERY_DIRECT_LOAD_TIMEOUT = 15000;
 const MAX_FAVORITE_REFRESH_WORKERS = 4;
 
 const favoriteRefreshState = {
@@ -1400,9 +1401,23 @@ function registerGalleryImage(img, src, options = {}) {
     img.src = options.fallbackSrc;
   }
   img.addEventListener("load", () => {
+    if (
+      img.dataset.fallbackSrc &&
+      (img.currentSrc === img.dataset.fallbackSrc ||
+        img.src === img.dataset.fallbackSrc)
+    ) {
+      return;
+    }
     img.dataset.loadState = "loaded";
   });
   img.addEventListener("error", () => {
+    if (
+      img.dataset.fallbackSrc &&
+      (img.currentSrc === img.dataset.fallbackSrc ||
+        img.src === img.dataset.fallbackSrc)
+    ) {
+      return;
+    }
     img.dataset.loadState = "error";
     scheduleGalleryRetry(img);
   });
@@ -1482,13 +1497,54 @@ function pumpGalleryQueue() {
       }
     };
     if (src.startsWith("http")) {
-      void loadGalleryImageFromBytes(img, src, token, onDone);
+      void loadGalleryImageDirect(img, src, token, onDone);
       continue;
     }
     img.addEventListener("load", onDone, { once: true });
     img.addEventListener("error", onDone, { once: true });
     img.src = src;
   }
+}
+
+function loadGalleryImageDirect(img, src, token, onDone) {
+  const loader = new Image();
+  let settled = false;
+  const timeoutId = window.setTimeout(() => {
+    if (settled) {
+      return;
+    }
+    settled = true;
+    cleanup();
+    void loadGalleryImageFromBytes(img, src, token, onDone);
+  }, GALLERY_DIRECT_LOAD_TIMEOUT);
+  const cleanup = () => {
+    window.clearTimeout(timeoutId);
+    loader.onload = null;
+    loader.onerror = null;
+  };
+  loader.decoding = "async";
+  loader.onload = () => {
+    if (settled) {
+      return;
+    }
+    settled = true;
+    cleanup();
+    if (token !== galleryLoadState.token || !img.isConnected) {
+      onDone();
+      return;
+    }
+    img.src = src;
+    onDone();
+  };
+  loader.onerror = () => {
+    if (settled) {
+      return;
+    }
+    settled = true;
+    cleanup();
+    void loadGalleryImageFromBytes(img, src, token, onDone);
+  };
+  loader.src = src;
 }
 
 async function loadGalleryImageFromBytes(img, src, token, onDone) {
