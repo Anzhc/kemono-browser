@@ -11,7 +11,12 @@ const path = require("path");
 const fs = require("fs");
 const JSZip = require("jszip");
 
-const API_BASE = "https://kemono.cr/api/v1";
+const SITE_BASE = "https://pawchive.st";
+// pawchive.st currently redirects to the .pw mirror, whose asset hosts are live.
+const SERVICE_BASE = "https://pawchive.pw";
+const API_BASE = `${SERVICE_BASE}/api/v1`;
+const FILE_BASE = "https://file.pawchive.pw";
+const IMAGE_BASE = "https://img.pawchive.pw";
 
 let creatorsCache = null;
 let outputFolder = "";
@@ -125,7 +130,7 @@ async function fetchBufferWithProgress(
   channel,
   doneLabel
 ) {
-  const response = await networkFetch(normalizeKemonoFetchUrl(url));
+  const response = await networkFetch(normalizePawchiveFetchUrl(url));
   if (!response.ok) {
     const text = await response.text();
     throw new Error(`Download failed ${response.status}: ${text}`);
@@ -223,7 +228,10 @@ function buildQuery(params = {}) {
 async function networkFetch(url, options = {}) {
   const targetUrl = String(url || "");
   const headers = new Headers(options.headers || {});
-  if (app.isReady() && /(^https?:\/\/)(?:[^/]+\.)?kemono\.cr(\/|$)/i.test(targetUrl)) {
+  if (
+    app.isReady() &&
+    /(^https?:\/\/)(?:[^/]+\.)?pawchive\.(?:st|pw)(\/|$)/i.test(targetUrl)
+  ) {
     const cookieItems = await session.defaultSession.cookies.get({ url: targetUrl });
     if (cookieItems.length > 0 && !headers.has("Cookie")) {
       headers.set(
@@ -232,10 +240,10 @@ async function networkFetch(url, options = {}) {
       );
     }
     if (!headers.has("Referer")) {
-      headers.set("Referer", "https://kemono.cr/");
+      headers.set("Referer", `${SERVICE_BASE}/`);
     }
     if (!headers.has("Origin")) {
-      headers.set("Origin", "https://kemono.cr");
+      headers.set("Origin", SERVICE_BASE);
     }
     if (!headers.has("Accept-Language")) {
       headers.set("Accept-Language", "en-US,en;q=0.9");
@@ -256,20 +264,20 @@ async function networkFetch(url, options = {}) {
   });
 }
 
-function normalizeKemonoFetchUrl(value) {
+function normalizePawchiveFetchUrl(value) {
   if (!value) {
     return value;
   }
   if (!String(value).startsWith("http")) {
-    return `https://kemono.cr/data${value}`;
+    return `${FILE_BASE}/data${value}`;
   }
   try {
     const parsed = new URL(value);
     if (
-      /^n\d+\.kemono\.cr$/i.test(parsed.hostname) &&
+      /(?:^|\.)pawchive\.(?:st|pw)$/i.test(parsed.hostname) &&
       parsed.pathname.startsWith("/data/")
     ) {
-      parsed.hostname = "kemono.cr";
+      parsed.hostname = new URL(FILE_BASE).hostname;
     }
     return parsed.toString();
   } catch (_error) {
@@ -383,15 +391,15 @@ app.whenReady().then(() => {
   );
 
   ipcMain.handle("api:getDataBase", () => {
-    return "https://kemono.cr";
+    return FILE_BASE;
   });
 
   ipcMain.handle("api:getThumbBase", () => {
-    return "https://img.kemono.cr/thumbnail/data";
+    return `${IMAGE_BASE}/thumbnail/data`;
   });
 
   ipcMain.handle("api:getMediaBytes", async (_event, { path }) => {
-    const url = normalizeKemonoFetchUrl(path);
+    const url = normalizePawchiveFetchUrl(path);
     const response = await networkFetch(url, {
       headers: {
         Accept: "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
@@ -449,7 +457,7 @@ app.whenReady().then(() => {
     const baseName = path.basename(parsed.pathname) || "image";
     const candidate = getUniquePath(targetFolder, baseName);
 
-    const response = await networkFetch(normalizeKemonoFetchUrl(url));
+    const response = await networkFetch(normalizePawchiveFetchUrl(url));
     if (!response.ok) {
       const text = await response.text();
       throw new Error(`Download failed ${response.status}: ${text}`);

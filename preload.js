@@ -1,6 +1,6 @@
 const { contextBridge, ipcRenderer } = require("electron");
 
-contextBridge.exposeInMainWorld("kemono", {
+contextBridge.exposeInMainWorld("pawchive", {
   getCreators: () => ipcRenderer.invoke("api:getCreators"),
   getCreatorProfile: (service, id) =>
     ipcRenderer.invoke("api:getCreatorProfile", { service, id }),

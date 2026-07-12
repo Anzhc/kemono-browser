@@ -7,5 +7,5 @@ if not exist node_modules (
   npm install
 )
 
-echo Starting Kemono Browser...
+echo Starting Pawchive Browser...
 npm run start

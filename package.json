@@ -1,7 +1,7 @@
 {
-  "name": "kemono-browser",
+  "name": "pawchive-browser",
   "version": "0.1.0",
-  "description": "Custom Kemono browser",
+  "description": "Custom Pawchive browser",
   "main": "main.js",
   "type": "commonjs",
   "scripts": {

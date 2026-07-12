@@ -264,8 +264,8 @@ async function refreshArtistMetadata(artist) {
   favoriteRefreshState.inFlight.add(key);
   try {
     const [profileResult, postsResult] = await Promise.allSettled([
-      window.kemono.getCreatorProfile(record.service, record.id),
-      window.kemono.getCreatorPosts(record.service, record.id, {
+      window.pawchive.getCreatorProfile(record.service, record.id),
+      window.pawchive.getCreatorPosts(record.service, record.id, {
         offset: 0,
         query: "",
       }),
@@ -315,22 +315,22 @@ function isArtistFavorite(artist) {
 }
 
 async function persistFavorites() {
-  if (!window.kemono.saveFavorites) {
+  if (!window.pawchive.saveFavorites) {
     return;
   }
   try {
-    await window.kemono.saveFavorites([...state.favoriteArtists]);
+    await window.pawchive.saveFavorites([...state.favoriteArtists]);
   } catch (error) {
     setStatus(`Failed to save favorites: ${error.message}`, "error");
   }
 }
 
 async function persistReadPosts() {
-  if (!window.kemono.saveReadPosts) {
+  if (!window.pawchive.saveReadPosts) {
     return;
   }
   try {
-    await window.kemono.saveReadPosts([...state.readPosts]);
+    await window.pawchive.saveReadPosts([...state.readPosts]);
   } catch (error) {
     setStatus(`Failed to save marked posts: ${error.message}`, "error");
   }
@@ -729,6 +729,14 @@ function buildThumbUrl(path) {
   return `${state.thumbBase}${path}`;
 }
 
+function getImageBase() {
+  try {
+    return new URL(state.thumbBase).origin;
+  } catch (_error) {
+    return "https://img.pawchive.pw";
+  }
+}
+
 async function setStaticGifPreview(img, path) {
   try {
     const dataUrl = await getGifPreviewDataUrl(path);
@@ -757,7 +765,7 @@ async function getGifPreviewDataUrl(path) {
   }
   const promise = (async () => {
     try {
-      const bytes = await window.kemono.getMediaBytes(path);
+      const bytes = await window.pawchive.getMediaBytes(path);
       const blob = new Blob([bytes], { type: "image/gif" });
       const bitmap = await createImageBitmap(blob);
       const canvas = document.createElement("canvas");
@@ -845,7 +853,7 @@ function renderArtists() {
 
     const banner = document.createElement("div");
     banner.className = "artist-card__bg";
-    banner.style.backgroundImage = `url(https://img.kemono.cr/banners/${artist.service}/${artist.id})`;
+    banner.style.backgroundImage = `url(${getImageBase()}/banners/${artist.service}/${artist.id})`;
 
     const shade = document.createElement("div");
     shade.className = "artist-card__shade";
@@ -900,7 +908,7 @@ function renderArtists() {
     const avatarWrap = document.createElement("div");
     avatarWrap.className = "artist-card__avatar";
     const avatar = document.createElement("img");
-    avatar.src = `https://img.kemono.cr/icons/${artist.service}/${artist.id}`;
+    avatar.src = `${getImageBase()}/icons/${artist.service}/${artist.id}`;
     avatar.alt = `${artist.name || "Artist"} avatar`;
     avatar.decoding = "async";
     avatar.fetchPriority = "low";
@@ -926,7 +934,7 @@ async function selectArtist(artist) {
   setStatus("Loading artist...", "info");
 
   try {
-    state.artistProfile = await window.kemono.getCreatorProfile(
+    state.artistProfile = await window.pawchive.getCreatorProfile(
       state.selectedArtist.service,
       state.selectedArtist.id
     );
@@ -983,7 +991,7 @@ async function loadPosts() {
     if (loadAll) {
       await loadAllPosts(requestId);
     } else {
-      const posts = await window.kemono.getCreatorPosts(
+      const posts = await window.pawchive.getCreatorPosts(
         state.selectedArtist.service,
         state.selectedArtist.id,
         {
@@ -1032,7 +1040,7 @@ async function loadAllPosts(requestId) {
     if (requestId !== state.postsRequestId) {
       return;
     }
-    const batch = await window.kemono.getCreatorPosts(
+    const batch = await window.pawchive.getCreatorPosts(
       state.selectedArtist.service,
       state.selectedArtist.id,
       {
@@ -1329,7 +1337,7 @@ async function getPostDetails(service, user, postId) {
   if (state.postCache.has(key)) {
     return state.postCache.get(key);
   }
-  const post = await window.kemono.getPost(service, user, postId);
+  const post = await window.pawchive.getPost(service, user, postId);
   state.postCache.set(key, post);
   return post;
 }
@@ -1549,7 +1557,7 @@ function loadGalleryImageDirect(img, src, token, onDone) {
 
 async function loadGalleryImageFromBytes(img, src, token, onDone) {
   try {
-    const bytes = await window.kemono.getMediaBytes(src);
+    const bytes = await window.pawchive.getMediaBytes(src);
     if (token !== galleryLoadState.token || !img.isConnected) {
       onDone();
       return;
@@ -1688,7 +1696,7 @@ async function ensureOutputFolder() {
   if (state.outputFolder) {
     return state.outputFolder;
   }
-  const folder = await window.kemono.selectOutputFolder();
+  const folder = await window.pawchive.selectOutputFolder();
   if (folder) {
     state.outputFolder = folder;
     setStatus("Output folder set.", "info");
@@ -1914,7 +1922,7 @@ async function previewZipInGallery(url, label, host, button) {
   }
   setStatus("Loading zip...", "info");
   try {
-    const images = await window.kemono.extractZipImages(url, requestId);
+    const images = await window.pawchive.extractZipImages(url, requestId);
     if (!images || images.length === 0) {
       setStatus("No images found in zip.", "info");
       return;
@@ -1974,9 +1982,9 @@ async function previewPdfInGallery(url, label, host, button) {
     if (!window.pdfjsLib) {
       throw new Error("PDF renderer is not available.");
     }
-    const bytes = window.kemono.fetchFileBytes
-      ? await window.kemono.fetchFileBytes(url, requestId)
-      : await window.kemono.getMediaBytes(url);
+    const bytes = window.pawchive.fetchFileBytes
+      ? await window.pawchive.fetchFileBytes(url, requestId)
+      : await window.pawchive.getMediaBytes(url);
     if (progress) {
       progress.bar.classList.remove("is-indeterminate");
       progress.fill.style.width = "100%";
@@ -2645,7 +2653,7 @@ function renderGallery() {
         link.className = "ghost";
         link.textContent = "Open";
         link.addEventListener("click", () => {
-          window.kemono.openExternal(item.url);
+          window.pawchive.openExternal(item.url);
         });
         actions.appendChild(link);
 
@@ -2710,7 +2718,7 @@ function renderGallery() {
           button.className = "ghost";
           button.textContent = link.label || "Link";
           button.addEventListener("click", () => {
-            window.kemono.openExternal(link.url);
+            window.pawchive.openExternal(link.url);
           });
           actions.appendChild(button);
         });
@@ -3084,7 +3092,7 @@ function setupEventListeners() {
   });
 
   elements.setOutputFolder.addEventListener("click", async () => {
-    const folder = await window.kemono.selectOutputFolder();
+    const folder = await window.pawchive.selectOutputFolder();
     if (folder) {
       state.outputFolder = folder;
       setStatus("Output folder updated.", "info");
@@ -3138,9 +3146,9 @@ function setupEventListeners() {
       if (memKey && memoryMedia.has(memKey)) {
         const entry = memoryMedia.get(memKey);
         const buffer = await entry.blob.arrayBuffer();
-        saved = await window.kemono.saveBytes(buffer, entry.name || filename, folder);
+        saved = await window.pawchive.saveBytes(buffer, entry.name || filename, folder);
       } else {
-        saved = await window.kemono.downloadImage(img.dataset.src, folder);
+        saved = await window.pawchive.downloadImage(img.dataset.src, folder);
       }
       const downloadKey = memKey || img.dataset.src;
       img.classList.add("is-downloaded");
@@ -3171,13 +3179,13 @@ function setupEventListeners() {
 async function init() {
   setStatus("Loading creators...", "info");
   setupEventListeners();
-  if (window.kemono.onZipProgress) {
-    window.kemono.onZipProgress((data) => {
+  if (window.pawchive.onZipProgress) {
+    window.pawchive.onZipProgress((data) => {
       updateDownloadProgress(data);
     });
   }
-  if (window.kemono.onFileProgress) {
-    window.kemono.onFileProgress((data) => {
+  if (window.pawchive.onFileProgress) {
+    window.pawchive.onFileProgress((data) => {
       updateDownloadProgress(data);
     });
   }
@@ -3205,18 +3213,18 @@ async function init() {
   }
 
   try {
-    if (window.kemono.getFavorites) {
-      const saved = await window.kemono.getFavorites();
+    if (window.pawchive.getFavorites) {
+      const saved = await window.pawchive.getFavorites();
       state.favoriteArtists = new Set(Array.isArray(saved) ? saved : []);
     }
-    if (window.kemono.getReadPosts) {
-      const saved = await window.kemono.getReadPosts();
+    if (window.pawchive.getReadPosts) {
+      const saved = await window.pawchive.getReadPosts();
       state.readPosts = new Set(Array.isArray(saved) ? saved : []);
     }
-    state.dataBase = await window.kemono.getDataBase();
-    state.thumbBase = await window.kemono.getThumbBase();
-    state.outputFolder = (await window.kemono.getOutputFolder()) || "";
-    state.creators = await window.kemono.getCreators();
+    state.dataBase = await window.pawchive.getDataBase();
+    state.thumbBase = await window.pawchive.getThumbBase();
+    state.outputFolder = (await window.pawchive.getOutputFolder()) || "";
+    state.creators = await window.pawchive.getCreators();
     state.creatorsSorted = [...state.creators].sort(
       (a, b) => (b.favorited || 0) - (a.favorited || 0)
     );
@@ -3233,7 +3241,6 @@ async function init() {
 
     applyArtistFilter();
     setStatus("Ready.", "info");
-    void refreshFavoriteArtistsMetadata();
   } catch (error) {
     setStatus(`Failed to load creators: ${error.message}`, "error");
   }
