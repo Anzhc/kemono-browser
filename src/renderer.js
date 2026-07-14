@@ -12,6 +12,7 @@ const VIDEO_EXTS = new Set(["mp4", "webm", "mov", "mkv", "avi"]);
 
 const state = {
   dataBase: "",
+  siteBase: "",
   thumbBase: "",
   creators: [],
   creatorsSorted: [],
@@ -170,11 +171,9 @@ function formatDate(value) {
     return "Unknown";
   }
   const date = new Date(timestamp);
-  return date.toLocaleDateString(undefined, {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  });
+  const day = String(date.getDate()).padStart(2, "0");
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  return `${day}/${month}/${date.getFullYear()}`;
 }
 
 function capitalize(value) {
@@ -729,14 +728,6 @@ function buildThumbUrl(path) {
   return `${state.thumbBase}${path}`;
 }
 
-function getImageBase() {
-  try {
-    return new URL(state.thumbBase).origin;
-  } catch (_error) {
-    return "https://img.pawchive.pw";
-  }
-}
-
 async function setStaticGifPreview(img, path) {
   try {
     const dataUrl = await getGifPreviewDataUrl(path);
@@ -853,7 +844,7 @@ function renderArtists() {
 
     const banner = document.createElement("div");
     banner.className = "artist-card__bg";
-    banner.style.backgroundImage = `url(${getImageBase()}/banners/${artist.service}/${artist.id})`;
+    banner.style.backgroundImage = `url(${state.siteBase}/banners/${artist.service}/${artist.id})`;
 
     const shade = document.createElement("div");
     shade.className = "artist-card__shade";
@@ -907,14 +898,23 @@ function renderArtists() {
 
     const avatarWrap = document.createElement("div");
     avatarWrap.className = "artist-card__avatar";
+    const avatarFallback = document.createElement("span");
+    avatarFallback.className = "artist-card__avatar-fallback";
+    avatarFallback.textContent =
+      String(artist.name || "?").trim().charAt(0).toUpperCase() || "?";
+    avatarFallback.setAttribute("aria-hidden", "true");
     const avatar = document.createElement("img");
-    avatar.src = `${getImageBase()}/icons/${artist.service}/${artist.id}`;
+    avatar.src = `${state.siteBase}/icons/${artist.service}/${artist.id}`;
     avatar.alt = `${artist.name || "Artist"} avatar`;
     avatar.decoding = "async";
     avatar.fetchPriority = "low";
-    avatar.onerror = () => {
-      avatarWrap.remove();
+    avatar.onload = () => {
+      avatarFallback.remove();
     };
+    avatar.onerror = () => {
+      avatar.remove();
+    };
+    avatarWrap.appendChild(avatarFallback);
     avatarWrap.appendChild(avatar);
 
     card.appendChild(banner);
@@ -3222,6 +3222,7 @@ async function init() {
       state.readPosts = new Set(Array.isArray(saved) ? saved : []);
     }
     state.dataBase = await window.pawchive.getDataBase();
+    state.siteBase = await window.pawchive.getSiteBase();
     state.thumbBase = await window.pawchive.getThumbBase();
     state.outputFolder = (await window.pawchive.getOutputFolder()) || "";
     state.creators = await window.pawchive.getCreators();

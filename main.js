@@ -394,6 +394,10 @@ app.whenReady().then(() => {
     return FILE_BASE;
   });
 
+  ipcMain.handle("api:getSiteBase", () => {
+    return SERVICE_BASE;
+  });
+
   ipcMain.handle("api:getThumbBase", () => {
     return `${IMAGE_BASE}/thumbnail/data`;
   });
